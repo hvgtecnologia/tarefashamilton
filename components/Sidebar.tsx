@@ -161,7 +161,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   Crie um projeto para cada negócio (Áurea, Tráfego, etc.)
                 </p>
               )}
-              {projects.map(proj => {
+              {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })).map(proj => {
                 const pending = pendingByProject[proj.id] || 0;
                 const overdue = overdueByProject[proj.id] || 0;
                 return (
