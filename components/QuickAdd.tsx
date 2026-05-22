@@ -168,7 +168,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="">Nenhum</option>
-                {projects.map(p => (
+                {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })).map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>

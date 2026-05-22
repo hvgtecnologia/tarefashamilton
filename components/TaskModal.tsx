@@ -369,7 +369,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                   onChange={e => setProjectId(e.target.value)}
                 >
                   <option value="">Nenhum</option>
-                  {projects.map(p => (
+                  {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })).map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>

@@ -83,10 +83,19 @@ const App: React.FC = () => {
       if (!userId) return;
 
       try {
+        const loadedProjects = await getProjects();
+        setProjects([...loadedProjects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+
         let loadedCategories = await getCategories();
-        if (loadedCategories.length === 0) {
-          loadedCategories = DEFAULT_CATEGORIES;
-          for (const cat of DEFAULT_CATEGORIES) await addCategoryToStorage(cat);
+        // Apenas recria as categorias padrão se for um usuário completamente novo (sem categorias e sem projetos cadastrados)
+        if (loadedCategories.length === 0 && loadedProjects.length === 0) {
+          for (const cat of DEFAULT_CATEGORIES) {
+            try {
+              await addCategoryToStorage({ name: cat.name, color: cat.color });
+            } catch (err) {
+              console.error('Erro ao criar categoria padrão:', err);
+            }
+          }
           loadedCategories = await getCategories();
         }
         setCategories(loadedCategories);
@@ -111,9 +120,6 @@ const App: React.FC = () => {
         }));
 
         setTasks(fixed);
-
-        const loadedProjects = await getProjects();
-        setProjects(loadedProjects);
       } catch (e) {
         console.error('Error loading data:', e);
       }
@@ -282,29 +288,39 @@ const App: React.FC = () => {
     try {
       const c = await addCategoryToStorage({ name, color });
       setCategories(prev => [...prev, c]);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error("Erro ao adicionar categoria:", e);
+      alert("Erro ao salvar categoria: " + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   const deleteCategory = async (id: string) => {
     try {
-      await deleteCategoryFromStorage(id);
+      const success = await deleteCategoryFromStorage(id);
+      if (!success) {
+        alert("Erro ao excluir a categoria no banco de dados.");
+        return;
+      }
       const def = categories[0]?.id;
       if (def) setTasks(prev => prev.map(t => t.category === id ? { ...t, category: def } : t));
       setCategories(prev => prev.filter(c => c.id !== id));
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error("Erro ao deletar categoria:", e);
+      alert("Erro ao deletar categoria: " + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   const addProject = async (name: string, description: string, color: string) => {
     try {
       const p = await addProjectToStorage({ name, description, color });
-      setProjects(prev => [...prev, p]);
+      setProjects(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
     } catch (e) { console.error(e); }
   };
 
   const updateProject = async (id: string, updates: Partial<Project>) => {
     try {
       const updated = await updateProjectToStorage(id, updates);
-      if (updated) setProjects(prev => prev.map(p => p.id === id ? updated : p));
+      if (updated) setProjects(prev => prev.map(p => p.id === id ? updated : p).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
     } catch (e) { console.error(e); }
   };
 
