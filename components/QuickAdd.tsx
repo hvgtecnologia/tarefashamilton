@@ -147,7 +147,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
             {/* Data */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Quando
+                <Calendar className="w-3 h-3" /> Quando vou fazer
               </label>
               <input
                 type="date"
@@ -155,6 +155,9 @@ const QuickAdd: React.FC<QuickAddProps> = ({
                 onChange={e => setScheduledDate(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
               />
+              <p className="text-[9px] text-blue-600 mt-1 italic">
+                📅 Aparece no calendário e na semana
+              </p>
             </div>
 
             {/* Projeto */}

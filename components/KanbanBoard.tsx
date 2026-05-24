@@ -29,9 +29,23 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-3">
       {columns.map(col => {
-        const colTasks = tasks
-          .filter(t => col.isInbox ? t.dayOfWeek === 'inbox' : t.scheduledDate === col.id)
-          .sort((a, b) => a.position - b.position);
+        let colTasks: Task[];
+        if (col.isInbox) {
+          // Inbox = sem data + atrasadas (scheduledDate anterior a hoje)
+          const noDate = tasks
+            .filter(t => t.dayOfWeek === 'inbox' || !t.scheduledDate)
+            .sort((a, b) => a.position - b.position);
+
+          const overdue = tasks
+            .filter(t => t.scheduledDate && t.scheduledDate < today && t.dayOfWeek !== 'inbox')
+            .sort((a, b) => (a.scheduledDate || '').localeCompare(b.scheduledDate || '')); // antiga -> recente
+
+          colTasks = [...noDate, ...overdue];
+        } else {
+          colTasks = tasks
+            .filter(t => t.scheduledDate === col.id)
+            .sort((a, b) => a.position - b.position);
+        }
 
         return (
           <div key={col.id} className="flex flex-col">
@@ -42,7 +56,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 }`}>
                   {col.label}{col.isToday ? ' · HOJE' : ''}
                 </h3>
-                {!col.isInbox && (
+                {col.isInbox ? (
+                  <span className="text-[9px] text-slate-400 font-medium">Sem data + atrasadas</span>
+                ) : (
                   <span className="text-[9px] text-slate-400 font-medium">Programado</span>
                 )}
               </div>

@@ -403,6 +403,9 @@ const TaskModal: React.FC<TaskModalProps> = ({
                     value={scheduledDate}
                     onChange={e => setScheduledDate(e.target.value)}
                   />
+                  <p className="text-[10px] text-blue-600 mt-1 italic leading-tight">
+                    📅 Esta é a data que a tarefa aparece no calendário e na semana
+                  </p>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -414,6 +417,9 @@ const TaskModal: React.FC<TaskModalProps> = ({
                     value={dueDate}
                     onChange={e => setDueDate(e.target.value)}
                   />
+                  <p className="text-[10px] text-slate-500 mt-1 italic leading-tight">
+                    ⏰ Deadline (quando precisa estar pronta)
+                  </p>
                 </div>
               </div>
 
