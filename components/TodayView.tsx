@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { AlertCircle, Calendar, Inbox, CheckCircle2, Target, TrendingUp, Flame, Clock } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
-import { URGENCY_CONFIG, todayISO, isOverdue, parseLocalDate, formatPrettyDate } from '../constants';
+import { URGENCY_CONFIG, todayISO, isOverdue, parseLocalDate, formatPrettyDate, sortTasksByTime } from '../constants';
 import TaskCard from './TaskCard';
 
 interface TodayViewProps {
@@ -35,10 +35,10 @@ const TodayView: React.FC<TodayViewProps> = ({
       return due && due < today;
     });
 
-    const todayList = pending.filter(t => {
+    const todayList = sortTasksByTime(pending.filter(t => {
       const due = t.dueDate || t.scheduledDate;
       return due === today;
-    });
+    }));
 
     const inProgressList = pending.filter(t => t.status === 'doing' && !todayList.includes(t) && !overdueList.includes(t));
     const blockedList = pending.filter(t => t.status === 'blocked');

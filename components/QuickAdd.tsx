@@ -25,6 +25,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   const [category, setCategory] = useState(categories[0]?.id || '');
   const [projectId, setProjectId] = useState(defaultProjectId || '');
   const [scheduledDate, setScheduledDate] = useState(defaultDate || todayISO());
+  const [scheduledTime, setScheduledTime] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -82,6 +83,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
       category,
       projectId: projectId || undefined,
       scheduledDate: parsed.date || scheduledDate || undefined,
+      scheduledTime: scheduledTime || undefined,
       dayOfWeek: 'inbox',
       notes: '',
       attachments: [],
@@ -149,14 +151,23 @@ const QuickAdd: React.FC<QuickAddProps> = ({
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> Quando vou fazer
               </label>
-              <input
-                type="date"
-                value={scheduledDate}
-                onChange={e => setScheduledDate(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
+              <div className="flex gap-1.5">
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={e => setScheduledDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <input
+                  type="time"
+                  title="Horário (opcional)"
+                  value={scheduledTime}
+                  onChange={e => setScheduledTime(e.target.value)}
+                  className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
               <p className="text-[9px] text-blue-600 mt-1 italic">
-                📅 Aparece no calendário e na semana
+                📅 Aparece no calendário e na semana, ordenada pelo horário
               </p>
             </div>
 

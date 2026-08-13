@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
 import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View } from './types';
-import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue } from './constants';
+import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime } from './constants';
 import KanbanBoard from './components/KanbanBoard';
 import Sidebar from './components/Sidebar';
 import TaskModal from './components/TaskModal';
@@ -163,6 +163,7 @@ const App: React.FC = () => {
         projectId: data.projectId,
         dayOfWeek: data.dayOfWeek || 'inbox',
         scheduledDate: data.scheduledDate,
+        scheduledTime: data.scheduledTime,
         dueDate: data.dueDate,
         position: tasks.length,
         notes: data.notes || '',
@@ -179,30 +180,42 @@ const App: React.FC = () => {
   };
 
   const updateTask = async (id: string, updates: Partial<Task>) => {
+    const current = tasks.find(t => t.id === id);
+    let finalUpdates = updates;
+
+    // Sincroniza isCompleted/completedAt com o status, não importa por onde a mudança chegou
+    // (botão rápido do card, modal de edição ou drag no board do projeto) — as três formas de
+    // marcar "Concluída" no app passam por aqui.
+    if (current && updates.status !== undefined) {
+      if (updates.status === 'done' && current.status !== 'done') {
+        finalUpdates = { ...updates, isCompleted: true, completedAt: updates.completedAt ?? new Date().toISOString() };
+      } else if (updates.status !== 'done' && current.status === 'done') {
+        finalUpdates = { ...updates, isCompleted: false, completedAt: undefined };
+      }
+    }
+
     try {
-      await updateTaskInStorage(id, updates);
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t));
+      await updateTaskInStorage(id, finalUpdates);
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, ...finalUpdates, updatedAt: new Date().toISOString() } : t));
+
+      // Recria a próxima ocorrência ao concluir uma tarefa recorrente, qualquer que tenha sido o caminho usado para concluí-la.
+      if (current && !current.isCompleted && finalUpdates.isCompleted === true && current.recurrence && current.recurrence !== 'none') {
+        const merged: Task = { ...current, ...finalUpdates };
+        const clone = buildRecurringClone(merged);
+        try {
+          const newTask = await addTaskToStorage({ ...clone, position: tasks.length });
+          setTasks(prev => [...prev, newTask]);
+        } catch (e) {
+          console.error('Error recreating recurring task:', e);
+        }
+      }
     } catch (e) {
       console.error('Error updating task:', e);
     }
   };
 
   const completeTask = async (id: string) => {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
-    const now = new Date().toISOString();
-    await updateTask(id, { isCompleted: true, status: 'done', completedAt: now });
-
-    // Recriar se for recorrente
-    if (task.recurrence && task.recurrence !== 'none') {
-      const clone = buildRecurringClone(task);
-      try {
-        const newTask = await addTaskToStorage({ ...clone, position: tasks.length });
-        setTasks(prev => [...prev, newTask]);
-      } catch (e) {
-        console.error('Error recreating recurring task:', e);
-      }
-    }
+    await updateTask(id, { status: 'done' });
   };
 
   const restoreTask = async (id: string) => {
@@ -249,13 +262,12 @@ const App: React.FC = () => {
       }
     }
 
-    const destTasks = tasks
-      .filter(t => {
-        if (t.id === draggableId) return false;
-        if (destination.droppableId === 'inbox') return t.dayOfWeek === 'inbox';
-        return t.scheduledDate === destination.droppableId;
-      })
-      .sort((a, b) => a.position - b.position);
+    // Mesma ordenação usada para renderizar a coluna, para os índices do drag baterem certo.
+    const destTasks = destination.droppableId === 'inbox'
+      ? tasks
+          .filter(t => t.id !== draggableId && t.dayOfWeek === 'inbox')
+          .sort((a, b) => a.position - b.position)
+      : sortTasksByTime(tasks.filter(t => t.id !== draggableId && t.scheduledDate === destination.droppableId));
 
     destTasks.splice(destination.index, 0, updated);
     destTasks.forEach((t, i) => { t.position = i; });

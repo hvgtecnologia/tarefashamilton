@@ -8,7 +8,7 @@ const TASK_META_KEY = 'planner-hamilton-task-meta';
 
 // Metadata local: sobrevive quando o Supabase ainda não tem as colunas V2 aplicadas.
 // Mapeamos por taskId → { status?, dueDate?, checklist?, recurrence? }
-type TaskMeta = Pick<Partial<Task>, 'status' | 'dueDate' | 'checklist' | 'recurrence'>;
+type TaskMeta = Pick<Partial<Task>, 'status' | 'dueDate' | 'checklist' | 'recurrence' | 'scheduledTime'>;
 
 function loadTaskMetaMap(): Record<string, TaskMeta> {
     try {
@@ -52,6 +52,7 @@ const rowToTask = (task: any): Task => ({
     projectId: task.project_id,
     dayOfWeek: task.day_of_week,
     scheduledDate: task.scheduled_date,
+    scheduledTime: task.scheduled_time,
     dueDate: task.due_date,
     position: task.position,
     notes: task.notes || '',
@@ -87,6 +88,7 @@ export async function getTasks(): Promise<Task[]> {
                 if (meta.dueDate !== undefined) task.dueDate = meta.dueDate;
                 if (meta.checklist !== undefined) task.checklist = meta.checklist;
                 if (meta.recurrence !== undefined) task.recurrence = meta.recurrence;
+                if (meta.scheduledTime !== undefined) task.scheduledTime = meta.scheduledTime;
             }
             return task;
         });
@@ -116,6 +118,7 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
             project_id: task.projectId,
             day_of_week: task.dayOfWeek,
             scheduled_date: task.scheduledDate,
+            scheduled_time: task.scheduledTime,
             due_date: task.dueDate,
             position: task.position,
             notes: task.notes || '',
@@ -136,11 +139,12 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
 
         let fellBackToMeta = false;
         // Fallback caso colunas novas ainda não existam no banco
-        if (error && /status|checklist|recurrence|due_date/i.test(error.message || '')) {
+        if (error && /status|checklist|recurrence|due_date|scheduled_time/i.test(error.message || '')) {
             delete payload.status;
             delete payload.checklist;
             delete payload.recurrence;
             delete payload.due_date;
+            delete payload.scheduled_time;
             const retry = await supabase.from('tasks').insert([payload]).select().single();
             data = retry.data;
             error = retry.error;
@@ -157,6 +161,7 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
         created.checklist = task.checklist || [];
         created.recurrence = task.recurrence || 'none';
         created.dueDate = task.dueDate;
+        created.scheduledTime = task.scheduledTime;
 
         if (fellBackToMeta) {
             upsertTaskMeta(created.id, {
@@ -164,6 +169,7 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
                 dueDate: created.dueDate,
                 checklist: created.checklist,
                 recurrence: created.recurrence,
+                scheduledTime: created.scheduledTime,
             });
         }
 
@@ -195,6 +201,7 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
         if (updates.dayOfWeek !== undefined) dbUpdates.day_of_week = updates.dayOfWeek;
         if (updates.scheduledDate !== undefined) dbUpdates.scheduled_date = updates.scheduledDate;
+        if (updates.scheduledTime !== undefined) dbUpdates.scheduled_time = updates.scheduledTime;
         if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
         if (updates.position !== undefined) dbUpdates.position = updates.position;
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
@@ -214,11 +221,12 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
             .single();
 
         let fellBackToMeta = false;
-        if (error && /status|checklist|recurrence|due_date/i.test(error.message || '')) {
+        if (error && /status|checklist|recurrence|due_date|scheduled_time/i.test(error.message || '')) {
             delete dbUpdates.status;
             delete dbUpdates.checklist;
             delete dbUpdates.recurrence;
             delete dbUpdates.due_date;
+            delete dbUpdates.scheduled_time;
             const retry = await supabase.from('tasks').update(dbUpdates).eq('id', id).select().single();
             data = retry.data;
             error = retry.error;
@@ -240,6 +248,7 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.dueDate !== undefined) { updated.dueDate = updates.dueDate; v2Patch.dueDate = updates.dueDate; }
         if (updates.checklist !== undefined) { updated.checklist = updates.checklist; v2Patch.checklist = updates.checklist; }
         if (updates.recurrence !== undefined) { updated.recurrence = updates.recurrence; v2Patch.recurrence = updates.recurrence; }
+        if (updates.scheduledTime !== undefined) { updated.scheduledTime = updates.scheduledTime; v2Patch.scheduledTime = updates.scheduledTime; }
 
         if (fellBackToMeta && Object.keys(v2Patch).length > 0) {
             upsertTaskMeta(id, v2Patch);

@@ -46,6 +46,7 @@ export function buildRecurringClone(task: Task): Omit<Task, 'id' | 'createdAt' |
     projectId: task.projectId,
     dayOfWeek: nextScheduled ? 'monday' : 'inbox',
     scheduledDate: nextScheduled,
+    scheduledTime: task.scheduledTime,
     dueDate: nextDue,
     position: task.position,
     notes: task.notes,

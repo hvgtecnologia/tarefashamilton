@@ -216,6 +216,13 @@ export const isToday = (dateStr?: string): boolean => {
   return dateStr === todayISO();
 };
 
+// Ordena tarefas de um mesmo dia por horário (HH:MM asc); sem horário ficam no topo, ordenadas por position.
+export const sortTasksByTime = <T extends { scheduledTime?: string; position: number }>(list: T[]): T[] => {
+  const withoutTime = list.filter(t => !t.scheduledTime).sort((a, b) => a.position - b.position);
+  const withTime = list.filter(t => t.scheduledTime).sort((a, b) => (a.scheduledTime as string).localeCompare(b.scheduledTime as string));
+  return [...withoutTime, ...withTime];
+};
+
 export const getWeekDates = (startOfWeek: Date): { date: string, label: string, dayKey: DayOfWeek }[] => {
   const days: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   return days.map((day, index) => {

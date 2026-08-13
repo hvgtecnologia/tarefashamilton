@@ -30,6 +30,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [category, setCategory] = useState(task?.category || (categories.length > 0 ? categories[0].id : ''));
   const [projectId, setProjectId] = useState<string>(task?.projectId || defaultProjectId || '');
   const [scheduledDate, setScheduledDate] = useState<string>(task?.scheduledDate || '');
+  const [scheduledTime, setScheduledTime] = useState<string>(task?.scheduledTime || '');
   const [dueDate, setDueDate] = useState<string>(task?.dueDate || '');
   const [notes, setNotes] = useState(task?.notes || '');
   const [attachments, setAttachments] = useState<TaskAttachment[]>(task?.attachments || []);
@@ -67,6 +68,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
       category,
       projectId: projectId || undefined,
       scheduledDate: scheduledDate || undefined,
+      scheduledTime: scheduledTime || undefined,
       dueDate: dueDate || undefined,
       dayOfWeek: scheduledDate ? 'monday' : 'inbox',
       notes: finalNotes,
@@ -397,14 +399,23 @@ const TaskModal: React.FC<TaskModalProps> = ({
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                     <Calendar className="w-3 h-3" /> Vou fazer em
                   </label>
-                  <input
-                    type="date"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
-                    value={scheduledDate}
-                    onChange={e => setScheduledDate(e.target.value)}
-                  />
+                  <div className="flex gap-1.5">
+                    <input
+                      type="date"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
+                      value={scheduledDate}
+                      onChange={e => setScheduledDate(e.target.value)}
+                    />
+                    <input
+                      type="time"
+                      title="Horário (opcional)"
+                      className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
+                      value={scheduledTime}
+                      onChange={e => setScheduledTime(e.target.value)}
+                    />
+                  </div>
                   <p className="text-[10px] text-blue-600 mt-1 italic leading-tight">
-                    📅 Esta é a data que a tarefa aparece no calendário e na semana
+                    📅 Esta é a data que a tarefa aparece no calendário e na semana. Com horário, as tarefas do dia ficam ordenadas por ele (sem horário fica no topo).
                   </p>
                 </div>
                 <div>

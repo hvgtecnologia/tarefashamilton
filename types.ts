@@ -53,6 +53,7 @@ export interface Task {
   projectId?: string;
   dayOfWeek: DayOfWeek;
   scheduledDate?: string;
+  scheduledTime?: string;
   dueDate?: string;
   position: number;
   notes: string;

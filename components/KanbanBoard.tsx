@@ -2,7 +2,7 @@ import React from 'react';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import { Plus } from 'lucide-react';
 import { Task, DayOfWeek, Category, Project, TaskStatus } from '../types';
-import { DAY_LABELS, todayISO } from '../constants';
+import { DAY_LABELS, todayISO, sortTasksByTime } from '../constants';
 import TaskCard from './TaskCard';
 
 interface KanbanBoardProps {
@@ -42,9 +42,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
           colTasks = [...noDate, ...overdue];
         } else {
-          colTasks = tasks
-            .filter(t => t.scheduledDate === col.id)
-            .sort((a, b) => a.position - b.position);
+          colTasks = sortTasksByTime(tasks.filter(t => t.scheduledDate === col.id));
         }
 
         return (

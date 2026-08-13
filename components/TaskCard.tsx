@@ -136,7 +136,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
               <div className={`flex items-center gap-1 ${overdue ? 'text-rose-600 font-bold' : dueToday ? 'text-blue-600 font-bold' : ''}`}>
                 {overdue ? <AlertCircle className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
                 <span className="text-[10px]">
-                  {overdue ? 'Atrasada · ' : ''}{formatPrettyDate(dueDate)}
+                  {overdue ? 'Atrasada · ' : ''}{formatPrettyDate(dueDate)}{task.scheduledTime ? ` · ${task.scheduledTime}` : ''}
                 </span>
               </div>
             )}
