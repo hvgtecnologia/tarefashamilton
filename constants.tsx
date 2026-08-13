@@ -149,6 +149,15 @@ export const RECURRENCE_LABELS: Record<Recurrence, string> = {
   monthly: 'Mensal',
 };
 
+// Versão curta pra caber em badges pequenos (card da tarefa)
+export const RECURRENCE_SHORT_LABELS: Record<Recurrence, string> = {
+  none: '',
+  daily: 'Diária',
+  weekdays: 'Dias úteis',
+  weekly: 'Semanal',
+  monthly: 'Mensal',
+};
+
 export const DAYS_ORDER: DayOfWeek[] = [
   'monday',
   'tuesday',

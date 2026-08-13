@@ -1,19 +1,27 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { X, RotateCcw, Trash2, Calendar, CheckCircle, Clock } from 'lucide-react';
 import { Task, Category } from '../types';
-import { URGENCY_CONFIG, DAY_LABELS } from '../constants';
+import { URGENCY_CONFIG } from '../constants';
 
 interface HistoryModalProps {
   tasks: Task[];
+  deletedTasks: Task[];
   categories: Category[];
   onClose: () => void;
   onRestore: (id: string) => void;
+  onRestoreDeleted: (id: string) => void;
   onPermanentDelete: (id: string) => void;
 }
 
-const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose, onRestore, onPermanentDelete }) => {
-  // Calculate days remaining until auto-delete (30 days)
+type Tab = 'completed' | 'trash';
+
+const HistoryModal: React.FC<HistoryModalProps> = ({
+  tasks, deletedTasks, categories, onClose, onRestore, onRestoreDeleted, onPermanentDelete
+}) => {
+  const [tab, setTab] = useState<Tab>('completed');
+
+  // Calculate days remaining until auto-delete (30 days) — só se aplica às concluídas
   const getDaysRemaining = (completedAt?: string) => {
     if (!completedAt) return 30;
     const completed = new Date(completedAt);
@@ -22,6 +30,10 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
     return Math.max(0, 30 - daysPassed);
   };
 
+  const list = tab === 'completed' ? tasks : deletedTasks;
+  const sortKey = (t: Task) => (tab === 'completed' ? t.completedAt : t.deletedAt) || '0';
+  const onRestoreClick = tab === 'completed' ? onRestore : onRestoreDeleted;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
@@ -29,10 +41,16 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
       <div className="relative bg-white w-full max-w-2xl max-h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         <header className="p-6 border-b flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <CheckCircle className="text-green-500 w-6 h-6" />
+            {tab === 'completed'
+              ? <CheckCircle className="text-green-500 w-6 h-6" />
+              : <Trash2 className="text-rose-500 w-6 h-6" />}
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Tarefas Concluídas</h2>
-              <p className="text-xs text-slate-500">Mantidas por 30 dias</p>
+              <h2 className="text-xl font-bold text-slate-800">
+                {tab === 'completed' ? 'Tarefas Concluídas' : 'Lixeira'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {tab === 'completed' ? 'Mantidas por 30 dias' : 'Restaure ou exclua definitivamente'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
@@ -40,20 +58,45 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
           </button>
         </header>
 
+        <div className="px-6 pt-4 flex-shrink-0">
+          <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
+            <button
+              onClick={() => setTab('completed')}
+              className={`flex items-center px-3 py-1.5 rounded-md font-medium text-sm transition-colors ${
+                tab === 'completed' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Concluídas ({tasks.length})
+            </button>
+            <button
+              onClick={() => setTab('trash')}
+              className={`flex items-center px-3 py-1.5 rounded-md font-medium text-sm transition-colors ${
+                tab === 'trash' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Lixeira ({deletedTasks.length})
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
-          {tasks.length === 0 ? (
+          {list.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
               <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-10 h-10" />
+                {tab === 'completed' ? <CheckCircle className="w-10 h-10" /> : <Trash2 className="w-10 h-10" />}
               </div>
-              <p className="font-medium">Nenhuma tarefa no histórico ainda.</p>
+              <p className="font-medium">
+                {tab === 'completed' ? 'Nenhuma tarefa no histórico ainda.' : 'A lixeira está vazia.'}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {tasks.sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime()).map(task => {
+              {[...list].sort((a, b) => new Date(sortKey(b)).getTime() - new Date(sortKey(a)).getTime()).map(task => {
                 const urgency = URGENCY_CONFIG[task.urgency];
                 const cat = categories.find(c => c.id === task.category);
-                const daysRemaining = getDaysRemaining(task.completedAt);
+                const daysRemaining = tab === 'completed' ? getDaysRemaining(task.completedAt) : null;
 
                 return (
                   <div key={task.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-colors">
@@ -69,10 +112,12 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
                         )}
                         <span className="text-[10px] text-slate-400 flex items-center">
                           <Calendar className="w-2 h-2 mr-1" />
-                          {task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : ''}
+                          {tab === 'completed'
+                            ? (task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : '')
+                            : (task.deletedAt ? new Date(task.deletedAt).toLocaleDateString('pt-BR') : '')}
                         </span>
-                        {/* Days remaining indicator */}
-                        {daysRemaining <= 7 && (
+                        {/* Days remaining indicator (só concluídas) */}
+                        {daysRemaining !== null && daysRemaining <= 7 && (
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center ${daysRemaining <= 3 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
                             }`}>
                             <Clock className="w-2 h-2 mr-1" />
@@ -88,7 +133,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
 
                     <div className="flex items-center space-x-2 ml-4">
                       <button
-                        onClick={() => onRestore(task.id)}
+                        onClick={() => onRestoreClick(task.id)}
                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center text-xs font-bold"
                         title="Restaurar"
                       >
@@ -97,7 +142,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
                       </button>
                       <button
                         onClick={() => {
-                          if (confirm('Excluir permanentemente esta tarefa?')) {
+                          if (confirm('Excluir permanentemente esta tarefa? Essa ação não pode ser desfeita.')) {
                             onPermanentDelete(task.id);
                           }
                         }}
@@ -117,10 +162,12 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ tasks, categories, onClose,
         <footer className="p-6 bg-slate-50 border-t">
           <div className="flex items-center justify-between text-xs">
             <p className="text-slate-500">
-              💡 <strong>Lixeira automática:</strong> Tarefas são excluídas após 30 dias
+              {tab === 'completed'
+                ? <>💡 <strong>Lixeira automática:</strong> Tarefas são excluídas após 30 dias</>
+                : <>💡 <strong>Reversível:</strong> "Excluir" em uma tarefa manda ela pra cá antes de sumir de vez</>}
             </p>
             <span className="text-slate-400">
-              {tasks.length} {tasks.length === 1 ? 'tarefa' : 'tarefas'}
+              {list.length} {list.length === 1 ? 'tarefa' : 'tarefas'}
             </span>
           </div>
         </footer>

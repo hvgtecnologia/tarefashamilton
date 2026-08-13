@@ -1,23 +1,13 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Project } from '../types';
-
-interface CalendarTask {
-    id: string;
-    title: string;
-    description: string;
-    priority: 'low' | 'medium' | 'high';
-    columnId: string;
-    projectId?: string;
-    position: number;
-    createdAt: string;
-    updatedAt: string;
-}
+import { Task, Project } from '../types';
+import { URGENCY_CONFIG, sortTasksByTime, formatDate as formatDateISO } from '../constants';
 
 interface CalendarViewProps {
-    tasks: CalendarTask[];
+    tasks: Task[];
     projects: Project[];
     onDayClick: (date: Date) => void;
+    onTaskClick: (task: Task) => void;
 }
 
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -27,15 +17,7 @@ const MONTHS = [
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-const PRIORITY_COLORS = {
-    low: 'bg-blue-500',
-    medium: 'bg-yellow-500',
-    high: 'bg-red-500',
-    // Fallback for unexpected priority
-    undefined: 'bg-slate-400'
-};
-
-export function CalendarView({ tasks, projects, onDayClick }: CalendarViewProps) {
+export function CalendarView({ tasks, projects, onDayClick, onTaskClick }: CalendarViewProps) {
     const [currentDate, setCurrentDate] = React.useState(new Date());
 
     const year = currentDate.getFullYear();
@@ -70,15 +52,10 @@ export function CalendarView({ tasks, projects, onDayClick }: CalendarViewProps)
         calendarDays.push(new Date(year, month + 1, i));
     }
 
-    // Get tasks for a specific date
-    const getTasksForDate = (date: Date): CalendarTask[] => {
-        const dateStr = formatDate(date);
-        return tasks.filter(task => task.columnId === dateStr);
-    };
-
-    // Format date as YYYY-MM-DD
-    const formatDate = (date: Date): string => {
-        return date.toISOString().split('T')[0];
+    // Get tasks for a specific date, ordenadas por horário (sem horário no topo)
+    const getTasksForDate = (date: Date): Task[] => {
+        const dateStr = formatDateISO(date);
+        return sortTasksByTime(tasks.filter(task => task.scheduledDate === dateStr));
     };
 
     // Check if date is in current month
@@ -209,28 +186,34 @@ export function CalendarView({ tasks, projects, onDayClick }: CalendarViewProps)
                                     <div className="space-y-1">
                                         {dayTasks.slice(0, 3).map((task) => {
                                             const project = task.projectId ? projects.find(p => p.id === task.projectId) : null;
+                                            const urgencyColor = URGENCY_CONFIG[task.urgency]?.color || 'bg-slate-400';
                                             return (
-                                                <div
+                                                <button
                                                     key={task.id}
-                                                    className="flex flex-col gap-0.5 text-[10px]"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        onTaskClick(task);
+                                                    }}
+                                                    className="w-full flex flex-col gap-0.5 text-[10px] text-left hover:bg-slate-100 rounded px-0.5 -mx-0.5"
                                                 >
                                                     <div className="flex items-center gap-1">
                                                         <div
-                                                            className={`w-1 h-1 rounded-full flex-shrink-0 ${PRIORITY_COLORS[task.priority]}`}
+                                                            className={`w-1 h-1 rounded-full flex-shrink-0 ${urgencyColor}`}
                                                         />
-                                                        <span className="truncate text-slate-700 font-medium leading-tight">
-                                                            {task.title}
+                                                        <span className={`truncate font-medium leading-tight ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                                                            {task.scheduledTime ? `${task.scheduledTime} · ` : ''}{task.title}
                                                         </span>
                                                     </div>
                                                     {project && (
-                                                        <span 
+                                                        <span
                                                             className="text-[9px] px-1 rounded truncate w-fit max-w-full font-bold uppercase opacity-80"
                                                             style={{ backgroundColor: `${project.color}15`, color: project.color, border: `1px solid ${project.color}30` }}
                                                         >
                                                             {project.name}
                                                         </span>
                                                     )}
-                                                </div>
+                                                </button>
                                             );
                                         })}
 

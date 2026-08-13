@@ -477,7 +477,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
               {task && (
                 <button
-                  onClick={() => { if (confirm('Excluir permanentemente?')) { onDelete(task.id); onClose(); } }}
+                  onClick={() => { if (confirm('Mover para a lixeira?')) { onDelete(task.id); onClose(); } }}
                   className="w-full flex items-center justify-center py-2 text-rose-500 hover:bg-rose-50 font-bold text-xs rounded-xl transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-2" />

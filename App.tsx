@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [view, setView] = useState<View>('today');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [deletedTasks, setDeletedTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -119,7 +120,8 @@ const App: React.FC = () => {
           return t;
         }));
 
-        setTasks(fixed);
+        setTasks(fixed.filter(t => !t.deletedAt));
+        setDeletedTasks(fixed.filter(t => t.deletedAt));
       } catch (e) {
         console.error('Error loading data:', e);
       }
@@ -235,9 +237,40 @@ const App: React.FC = () => {
     }
   };
 
+  // Move para a lixeira (reversível). Exclusão definitiva só acontece pela lixeira.
   const deleteTaskById = async (id: string) => {
-    await deleteTaskFromStorage(id);
-    setTasks(prev => prev.filter(t => t.id !== id));
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const deletedAt = new Date().toISOString();
+    try {
+      await updateTaskInStorage(id, { deletedAt });
+      setTasks(prev => prev.filter(t => t.id !== id));
+      setDeletedTasks(prev => [{ ...task, deletedAt }, ...prev]);
+    } catch (e) {
+      console.error('Error moving task to trash:', e);
+    }
+  };
+
+  const restoreDeletedTask = async (id: string) => {
+    const task = deletedTasks.find(t => t.id === id);
+    if (!task) return;
+    try {
+      await updateTaskInStorage(id, { deletedAt: undefined });
+      setDeletedTasks(prev => prev.filter(t => t.id !== id));
+      setTasks(prev => [...prev, { ...task, deletedAt: undefined }]);
+    } catch (e) {
+      console.error('Error restoring task from trash:', e);
+    }
+  };
+
+  const permanentlyDeleteTask = async (id: string) => {
+    try {
+      await deleteTaskFromStorage(id);
+      setTasks(prev => prev.filter(t => t.id !== id));
+      setDeletedTasks(prev => prev.filter(t => t.id !== id));
+    } catch (e) {
+      console.error('Error permanently deleting task:', e);
+    }
   };
 
   // ============ Drag & Drop ============
@@ -409,19 +442,6 @@ const App: React.FC = () => {
   }
 
   const openedProject = openProjectId ? projects.find(p => p.id === openProjectId) : null;
-
-  // ============ Calendar adapter (legado) ============
-  const calendarTasks = tasks.map(t => ({
-    id: t.id,
-    title: t.title,
-    description: t.description,
-    priority: (t.urgency === Urgency.CRITICAL || t.urgency === Urgency.HIGH ? 'high' : t.urgency === Urgency.MEDIUM ? 'medium' : 'low') as 'low' | 'medium' | 'high',
-    columnId: t.dayOfWeek === 'inbox' ? 'inbox' : (t.scheduledDate || 'inbox'),
-    projectId: t.projectId,
-    position: t.position,
-    createdAt: t.createdAt,
-    updatedAt: t.updatedAt || new Date().toISOString(),
-  }));
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden relative">
@@ -595,7 +615,12 @@ const App: React.FC = () => {
               onChangeStatus={changeStatus}
             />
           ) : view === 'calendar' ? (
-            <CalendarView tasks={calendarTasks as any} projects={projects} onDayClick={handleDayClick} />
+            <CalendarView
+              tasks={filteredTasks}
+              projects={projects}
+              onDayClick={handleDayClick}
+              onTaskClick={(task) => openTaskModal(task)}
+            />
           ) : (
             <DragDropContext onDragEnd={onDragEnd}>
               <KanbanBoard
@@ -658,10 +683,12 @@ const App: React.FC = () => {
       {isHistoryOpen && (
         <HistoryModal
           tasks={tasks.filter(t => t.isCompleted)}
+          deletedTasks={deletedTasks}
           categories={categories}
           onClose={() => setIsHistoryOpen(false)}
           onRestore={restoreTask}
-          onPermanentDelete={(id) => deleteTaskById(id)}
+          onRestoreDeleted={restoreDeletedTask}
+          onPermanentDelete={permanentlyDeleteTask}
         />
       )}
     </div>

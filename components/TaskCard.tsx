@@ -1,7 +1,7 @@
 import React from 'react';
 import { Circle, FileText, Image as ImageIcon, Calendar, CheckSquare, AlertCircle, Repeat } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
-import { URGENCY_CONFIG, getStatusConfig, isOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus } from '../constants';
+import { URGENCY_CONFIG, getStatusConfig, isOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus, RECURRENCE_SHORT_LABELS } from '../constants';
 
 interface TaskCardProps {
   task: Task;
@@ -90,8 +90,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
             )}
 
             {task.recurrence && task.recurrence !== 'none' && (
-              <span className="text-[10px] text-slate-400" title="Tarefa recorrente">
-                <Repeat className="w-3 h-3" />
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider bg-indigo-50 text-indigo-600 flex items-center gap-0.5 flex-shrink-0"
+                title={`Tarefa recorrente: ${RECURRENCE_SHORT_LABELS[task.recurrence]}`}
+              >
+                <Repeat className="w-2.5 h-2.5" />
+                {RECURRENCE_SHORT_LABELS[task.recurrence]}
               </span>
             )}
           </div>
