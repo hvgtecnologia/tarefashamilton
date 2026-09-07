@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
+import { uploadAttachment } from '../lib/storage';
 
 interface TaskModalProps {
   task: Task | null;
@@ -78,24 +79,18 @@ const TaskModal: React.FC<TaskModalProps> = ({
     });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList) return;
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList.item(i);
-      if (!file) continue;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newAttachment: TaskAttachment = {
-          id: crypto.randomUUID(),
-          url: reader.result as string,
-          name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'other',
-          size: file.size
-        };
-        setAttachments(prev => [...prev, newAttachment]);
-      };
-      reader.readAsDataURL(file);
+    const files = Array.from(fileList);
+    e.target.value = '';
+    for (const file of files) {
+      try {
+        const attachment = await uploadAttachment(file);
+        setAttachments(prev => [...prev, attachment]);
+      } catch (err) {
+        console.error('Erro ao anexar arquivo:', err);
+      }
     }
   };
 

@@ -3,7 +3,7 @@ import { Category, Urgency, Project, View } from '../types';
 import { URGENCY_CONFIG, isOverdue } from '../constants';
 import {
   LayoutDashboard, Sun, BarChart3, Calendar, Columns,
-  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles
+  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -26,6 +26,7 @@ interface SidebarProps {
   deleteProject: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenHistory: () => void;
+  onOpenCalendarSync: () => void;
   onClose?: () => void;
   onQuickAdd: () => void;
 }
@@ -35,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   pendingByProject, overdueByProject, todayCount, overdueCount,
   selectedUrgency, setSelectedUrgency, selectedCategory, setSelectedCategory,
   addCategory, deleteCategory, addProject, deleteProject,
-  onOpenProject, onOpenHistory, onClose, onQuickAdd
+  onOpenProject, onOpenHistory, onOpenCalendarSync, onClose, onQuickAdd
 }) => {
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -143,6 +144,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 icon={<History className="w-4 h-4" />}
                 label="Histórico"
                 onClick={() => { onOpenHistory(); onClose?.(); }}
+              />
+              <NavBtn
+                icon={<Share2 className="w-4 h-4 text-blue-600" />}
+                label="Google Agenda"
+                onClick={() => { onOpenCalendarSync(); onClose?.(); }}
               />
             </div>
           </div>

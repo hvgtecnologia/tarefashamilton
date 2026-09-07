@@ -12,6 +12,7 @@ import QuickAdd from './components/QuickAdd';
 import TodayView from './components/TodayView';
 import Dashboard from './components/Dashboard';
 import { CalendarView } from './components/CalendarView';
+import { CalendarSyncModal } from './components/CalendarSyncModal';
 import { LoginScreen } from './components/LoginScreen';
 import { buildRecurringClone } from './lib/recurrence';
 import {
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isCalendarSyncOpen, setIsCalendarSyncOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddDefaults, setQuickAddDefaults] = useState<{ projectId?: string; date?: string }>({});
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -475,6 +477,7 @@ const App: React.FC = () => {
           deleteProject={deleteProject}
           onOpenProject={(id) => setOpenProjectId(id)}
           onOpenHistory={() => setIsHistoryOpen(true)}
+          onOpenCalendarSync={() => setIsCalendarSyncOpen(true)}
           onClose={() => setIsSidebarOpen(false)}
           onQuickAdd={() => openQuickAdd()}
         />
@@ -689,6 +692,13 @@ const App: React.FC = () => {
           onRestore={restoreTask}
           onRestoreDeleted={restoreDeletedTask}
           onPermanentDelete={permanentlyDeleteTask}
+        />
+      )}
+
+      {isCalendarSyncOpen && (
+        <CalendarSyncModal
+          tasks={tasks}
+          onClose={() => setIsCalendarSyncOpen(false)}
         />
       )}
     </div>

@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
-import { Task, Category, Project, TaskStatus, Recurrence, ChecklistItem } from '../types';
+import { Task, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment } from '../types';
+
+const ATTACHMENTS_BUCKET = 'attachments';
 
 const STORAGE_KEY = 'planner-hamilton-tasks';
 const CATEGORIES_KEY = 'planner-hamilton-categories';
@@ -38,6 +40,48 @@ function removeTaskMeta(taskId: string) {
 export async function getCurrentUserId(): Promise<string | null> {
     const user = await getCurrentUser();
     return user?.id || null;
+}
+
+// ==================== ATTACHMENTS ====================
+
+function sanitizeFileName(name: string): string {
+    return name.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// Sobe o arquivo pro Supabase Storage (link leve na tarefa em vez de base64 pesado no banco).
+// Sem Supabase configurado, ou se o upload falhar, cai de volta pro base64 local (comportamento antigo).
+export async function uploadAttachment(file: File): Promise<TaskAttachment> {
+    const id = crypto.randomUUID();
+    const type: TaskAttachment['type'] = file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'other';
+
+    if (isSupabaseConfigured()) {
+        try {
+            const userId = await getCurrentUserId();
+            if (userId) {
+                const path = `${userId}/${id}-${sanitizeFileName(file.name)}`;
+                const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: file.type });
+                if (!error) {
+                    const { data } = supabase.storage.from(ATTACHMENTS_BUCKET).getPublicUrl(path);
+                    return { id, url: data.publicUrl, name: file.name, type, size: file.size };
+                }
+                console.error('Erro ao subir anexo para o Storage, usando fallback local:', error.message);
+            }
+        } catch (e) {
+            console.error('Erro ao subir anexo para o Storage, usando fallback local:', e);
+        }
+    }
+
+    const url = await fileToDataUrl(file);
+    return { id, url, name: file.name, type, size: file.size };
 }
 
 // ==================== TASKS ====================
