@@ -3,8 +3,9 @@ import { Category, Urgency, Project, View } from '../types';
 import { URGENCY_CONFIG, isOverdue } from '../constants';
 import {
   LayoutDashboard, Sun, BarChart3, Calendar, Columns,
-  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2
+  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2, Users
 } from 'lucide-react';
+import { useTeam } from './TeamContext';
 
 interface SidebarProps {
   categories: Category[];
@@ -20,6 +21,9 @@ interface SidebarProps {
   setSelectedUrgency: (u: Urgency | null) => void;
   selectedCategory: string | null;
   setSelectedCategory: (id: string | null) => void;
+  selectedAssignee: string | null;
+  setSelectedAssignee: (id: string | null) => void;
+  teamBadge: number;
   addCategory: (name: string, color: string) => void;
   deleteCategory: (id: string) => void;
   addProject: (name: string, description: string, color: string) => void;
@@ -35,9 +39,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   categories, projects, view, setView, openProjectId,
   pendingByProject, overdueByProject, todayCount, overdueCount,
   selectedUrgency, setSelectedUrgency, selectedCategory, setSelectedCategory,
+  selectedAssignee, setSelectedAssignee, teamBadge,
   addCategory, deleteCategory, addProject, deleteProject,
   onOpenProject, onOpenHistory, onOpenCalendarSync, onClose, onQuickAdd
 }) => {
+  const { members } = useTeam();
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState('#3b82f6');
@@ -141,6 +147,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => { setView('calendar'); onClose?.(); }}
               />
               <NavBtn
+                icon={<Users className="w-4 h-4" />}
+                label="Equipe"
+                active={view === 'team' && !openProjectId}
+                onClick={() => { setView('team'); onClose?.(); }}
+                badge={teamBadge}
+              />
+              <NavBtn
                 icon={<History className="w-4 h-4" />}
                 label="Histórico"
                 onClick={() => { onOpenHistory(); onClose?.(); }}
@@ -224,6 +237,32 @@ const Sidebar: React.FC<SidebarProps> = ({
               ))}
             </div>
           </div>
+
+          {/* Responsável */}
+          {members.length > 0 && (
+            <div>
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-2">Filtrar Responsável</h3>
+              <div className="space-y-0.5">
+                {[{ key: 'me', label: 'Eu (sem delegar)' }, ...members.map(m => ({ key: m.userId, label: m.name }))].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { setSelectedAssignee(selectedAssignee === opt.key ? null : opt.key); onClose?.(); }}
+                    className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      selectedAssignee === opt.key ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded-full text-white flex items-center justify-center text-[9px] font-bold uppercase mr-3 flex-shrink-0 ${
+                      opt.key === 'me' ? 'bg-slate-400' : 'bg-violet-600'
+                    }`}>
+                      {opt.label.charAt(0)}
+                    </span>
+                    <span className="flex-1 text-left truncate">{opt.label}</span>
+                    {selectedAssignee === opt.key && <X className="w-3 h-3 text-slate-400" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Categorias */}
           <div>

@@ -52,6 +52,7 @@ export function buildRecurringClone(task: Task): Omit<Task, 'id' | 'createdAt' |
     notes: task.notes,
     checklist: (task.checklist || []).map(c => ({ ...c, done: false })),
     recurrence: task.recurrence,
+    assignedTo: task.assignedTo,
     isCompleted: false,
     completedAt: undefined,
     deletedAt: undefined,

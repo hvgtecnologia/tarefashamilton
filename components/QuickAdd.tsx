@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Calendar, Flag, FolderKanban, Tag, Sparkles, X, AlertCircle, Repeat,
-  CheckSquare, Square, Plus, Paperclip, FileText,
+  CheckSquare, Square, Plus, Paperclip, FileText, Users,
 } from 'lucide-react';
 import { Task, Urgency, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment } from '../types';
 import { URGENCY_CONFIG, RECURRENCE_LABELS, todayISO, loadCustomStatuses, buildAllStatuses } from '../constants';
 import { uploadAttachment } from '../lib/storage';
+import { useTeam } from './TeamContext';
 
 interface QuickAddProps {
   categories: Category[];
   projects: Project[];
   defaultProjectId?: string;
   defaultDate?: string;
+  defaultAssignedTo?: string;
   onClose: () => void;
   onSubmit: (data: Partial<Task>) => void;
 }
@@ -21,9 +23,12 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   projects,
   defaultProjectId,
   defaultDate,
+  defaultAssignedTo,
   onClose,
   onSubmit,
 }) => {
+  const { members } = useTeam();
+  const [assignedTo, setAssignedTo] = useState(defaultAssignedTo || '');
   const [title, setTitle] = useState('');
   const [urgency, setUrgency] = useState<Urgency>(Urgency.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>('todo');
@@ -102,7 +107,11 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList) return;
-    const files = Array.from(fileList);
+    const files: File[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList.item(i);
+      if (f) files.push(f);
+    }
     e.target.value = '';
     for (const file of files) {
       try {
@@ -148,6 +157,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
       attachments,
       checklist: finalChecklist,
       recurrence,
+      assignedTo: assignedTo || undefined,
       isCompleted: false,
       position: 0,
     });
@@ -325,6 +335,24 @@ const QuickAdd: React.FC<QuickAddProps> = ({
                 ))}
               </select>
             </div>
+            {/* Responsável (equipe) */}
+            {members.length > 0 && (
+              <div className="col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
+                  <Users className="w-3 h-3" /> Responsável
+                </label>
+                <select
+                  value={assignedTo}
+                  onChange={e => setAssignedTo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Eu mesmo</option>
+                  {members.map(m => (
+                    <option key={m.userId} value={m.userId}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Descrição */}

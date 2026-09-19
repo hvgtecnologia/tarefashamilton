@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
-import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View } from './types';
+import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember } from './types';
 import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime } from './constants';
 import KanbanBoard from './components/KanbanBoard';
 import Sidebar from './components/Sidebar';
@@ -13,8 +13,13 @@ import TodayView from './components/TodayView';
 import Dashboard from './components/Dashboard';
 import { CalendarView } from './components/CalendarView';
 import { CalendarSyncModal } from './components/CalendarSyncModal';
+import TeamView from './components/TeamView';
+import TeamMemberModal, { TeamMemberModalMode } from './components/TeamMemberModal';
+import MemberApp from './components/MemberApp';
+import { TeamProvider } from './components/TeamContext';
 import { LoginScreen } from './components/LoginScreen';
 import { buildRecurringClone } from './lib/recurrence';
+import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember } from './lib/team';
 import {
   getTasks, addTask as addTaskToStorage, updateTask as updateTaskInStorage,
   deleteTask as deleteTaskFromStorage,
@@ -35,12 +40,18 @@ const App: React.FC = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isCalendarSyncOpen, setIsCalendarSyncOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const [quickAddDefaults, setQuickAddDefaults] = useState<{ projectId?: string; date?: string }>({});
+  const [quickAddDefaults, setQuickAddDefaults] = useState<{ projectId?: string; date?: string; assignedTo?: string }>({});
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskModalDefaults, setTaskModalDefaults] = useState<{ projectId?: string; status?: TaskStatus }>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUrgency, setSelectedUrgency] = useState<Urgency | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
+  const [teamRole, setTeamRole] = useState<'loading' | 'master' | 'member'>('loading');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamReady, setTeamReady] = useState(false);
+  const [memberName, setMemberName] = useState('');
+  const [teamModal, setTeamModal] = useState<TeamMemberModalMode | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
 
@@ -62,30 +73,31 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Auto cleanup das concluídas + 30 dias
-  useEffect(() => {
-    const cleanup = () => {
-      const now = new Date();
-      setTasks(prev => prev.filter(task => {
-        if (!task.isCompleted || !task.completedAt) return true;
-        const completedDate = new Date(task.completedAt);
-        const daysPassed = (now.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24);
-        return daysPassed < 30;
-      }));
-    };
-    cleanup();
-    const interval = setInterval(cleanup, 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Carrega dados quando autenticado
   useEffect(() => {
     const loadData = async () => {
-      if (!isAuthenticated) return;
+      if (!isAuthenticated) {
+        setTeamRole('loading');
+        return;
+      }
       const userId = await getCurrentUserId();
-      if (!userId) return;
+      if (!userId) {
+        setTeamRole('master');
+        return;
+      }
 
       try {
+        // Gestor ou membro? Membro usa uma tela própria e nunca carrega os dados do gestor
+        const team = await loadTeamContext();
+        if (team.role === 'member') {
+          setMemberName(team.membership?.name || '');
+          setTeamRole('member');
+          return;
+        }
+        setTeamMembers(team.members);
+        setTeamReady(team.ready);
+        setTeamRole('master');
+
         const loadedProjects = await getProjects();
         setProjects([...loadedProjects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
 
@@ -126,10 +138,34 @@ const App: React.FC = () => {
         setDeletedTasks(fixed.filter(t => t.deletedAt));
       } catch (e) {
         console.error('Error loading data:', e);
+        setTeamRole(role => (role === 'loading' ? 'master' : role));
       }
     };
     loadData();
   }, [isAuthenticated]);
+
+  const refreshTasks = useCallback(async () => {
+    const fresh = await getTasks();
+    setTasks(fresh.filter(t => !t.deletedAt));
+    setDeletedTasks(fresh.filter(t => t.deletedAt));
+  }, []);
+
+  // Com equipe: ao voltar para a aba (no máximo 1x por minuto) busca as novidades dos membros
+  useEffect(() => {
+    if (teamRole !== 'master' || teamMembers.length === 0) return;
+    let last = Date.now();
+    const onFocus = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
+      last = Date.now();
+      refreshTasks().catch(e => console.error('Erro ao atualizar tarefas:', e));
+    };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [teamRole, teamMembers.length, refreshTasks]);
 
   // Atalho Cmd+K / Ctrl+K
   useEffect(() => {
@@ -174,6 +210,7 @@ const App: React.FC = () => {
         checklist: data.checklist || [],
         recurrence: data.recurrence || 'none',
         attachments: data.attachments || [],
+        assignedTo: data.assignedTo || undefined,
         isCompleted: false,
       });
       setTasks(prev => [...prev, newTask]);
@@ -272,6 +309,30 @@ const App: React.FC = () => {
       setDeletedTasks(prev => prev.filter(t => t.id !== id));
     } catch (e) {
       console.error('Error permanently deleting task:', e);
+    }
+  };
+
+  // ============ Equipe ============
+
+  const handleCreateMember = async (input: { name: string; username: string; password: string }) => {
+    const member = await createTeamMember(input);
+    setTeamMembers(prev => [...prev, member].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+    return member;
+  };
+
+  const handleDeleteMember = async (member: TeamMember) => {
+    await deleteTeamMember(member.id);
+    setTeamMembers(prev => prev.filter(m => m.id !== member.id));
+    setTasks(prev => prev.map(t => (t.assignedTo === member.userId ? { ...t, assignedTo: undefined } : t)));
+    if (selectedAssignee === member.userId) setSelectedAssignee(null);
+  };
+
+  const markCompletionsSeen = async (ids: string[]) => {
+    setTasks(prev => prev.map(t => (ids.includes(t.id) ? { ...t, completionSeen: true } : t)));
+    try {
+      await Promise.all(ids.map(id => updateTaskInStorage(id, { completionSeen: true })));
+    } catch (e) {
+      console.error('Error marking completions as seen:', e);
     }
   };
 
@@ -389,10 +450,16 @@ const App: React.FC = () => {
         t.description.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesUrgency = !selectedUrgency || t.urgency === selectedUrgency;
       const matchesCategory = !selectedCategory || t.category === selectedCategory;
+      const matchesAssignee = !selectedAssignee || (selectedAssignee === 'me' ? !t.assignedTo : t.assignedTo === selectedAssignee);
       const notCompleted = !t.isCompleted;
-      return matchesSearch && matchesUrgency && matchesCategory && notCompleted;
+      return matchesSearch && matchesUrgency && matchesCategory && matchesAssignee && notCompleted;
     });
-  }, [tasks, searchTerm, selectedUrgency, selectedCategory]);
+  }, [tasks, searchTerm, selectedUrgency, selectedCategory, selectedAssignee]);
+
+  const unseenTeamCompletions = useMemo(
+    () => tasks.filter(t => t.isCompleted && t.completionSeen === false).length,
+    [tasks]
+  );
 
   const pendingByProject = useMemo(() => {
     const map: Record<string, number> = {};
@@ -427,7 +494,7 @@ const App: React.FC = () => {
     setIsTaskModalOpen(true);
   };
 
-  const openQuickAdd = (defaults: { projectId?: string; date?: string } = {}) => {
+  const openQuickAdd = (defaults: { projectId?: string; date?: string; assignedTo?: string } = {}) => {
     setQuickAddDefaults(defaults);
     setIsQuickAddOpen(true);
   };
@@ -443,9 +510,27 @@ const App: React.FC = () => {
     return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
   }
 
+  if (teamRole === 'loading') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (teamRole === 'member') {
+    return (
+      <MemberApp
+        memberName={memberName}
+        onLogout={() => { setIsAuthenticated(false); setTeamRole('loading'); setMemberName(''); }}
+      />
+    );
+  }
+
   const openedProject = openProjectId ? projects.find(p => p.id === openProjectId) : null;
 
   return (
+    <TeamProvider value={{ members: teamMembers }}>
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden relative">
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
@@ -471,6 +556,9 @@ const App: React.FC = () => {
           setSelectedUrgency={setSelectedUrgency}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          selectedAssignee={selectedAssignee}
+          setSelectedAssignee={setSelectedAssignee}
+          teamBadge={unseenTeamCompletions}
           addCategory={addCategory}
           deleteCategory={deleteCategory}
           addProject={addProject}
@@ -556,8 +644,12 @@ const App: React.FC = () => {
                   await signOut();
                   setIsAuthenticated(false);
                   setTasks([]);
+                  setDeletedTasks([]);
                   setCategories(DEFAULT_CATEGORIES);
                   setProjects([]);
+                  setTeamMembers([]);
+                  setTeamReady(false);
+                  setTeamRole('loading');
                 }
               }}
               className="px-3 py-2 text-sm font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
@@ -596,6 +688,19 @@ const App: React.FC = () => {
                 onEditProject={(updates) => updateProject(openedProject.id, updates)}
               />
             </div>
+          ) : view === 'team' ? (
+            <TeamView
+              members={teamMembers}
+              tasks={tasks}
+              ready={teamReady}
+              onAddMember={() => setTeamModal({ kind: 'create' })}
+              onResetPassword={(member) => setTeamModal({ kind: 'reset', member })}
+              onDeleteMember={handleDeleteMember}
+              onDelegate={(member) => openQuickAdd({ assignedTo: member.userId, date: today })}
+              onOpenTask={(task) => openTaskModal(task)}
+              onMarkSeen={markCompletionsSeen}
+              onRefresh={refreshTasks}
+            />
           ) : view === 'today' ? (
             <TodayView
               tasks={tasks}
@@ -678,6 +783,7 @@ const App: React.FC = () => {
           projects={projects}
           defaultProjectId={quickAddDefaults.projectId}
           defaultDate={quickAddDefaults.date}
+          defaultAssignedTo={quickAddDefaults.assignedTo}
           onClose={() => { setIsQuickAddOpen(false); setQuickAddDefaults({}); }}
           onSubmit={(data) => { addTask(data); }}
         />
@@ -701,7 +807,17 @@ const App: React.FC = () => {
           onClose={() => setIsCalendarSyncOpen(false)}
         />
       )}
+
+      {teamModal && (
+        <TeamMemberModal
+          mode={teamModal}
+          onClose={() => setTeamModal(null)}
+          onCreate={handleCreateMember}
+          onReset={resetTeamMemberPassword}
+        />
+      )}
     </div>
+    </TeamProvider>
   );
 };
 

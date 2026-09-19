@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Trash2, FileText, Plus, Calendar, Save, Edit3, Eye, Paperclip,
-  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical
+  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users
 } from 'lucide-react';
 import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
 import { uploadAttachment } from '../lib/storage';
+import { useTeam } from './TeamContext';
 
 interface TaskModalProps {
   task: Task | null;
@@ -37,6 +38,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [attachments, setAttachments] = useState<TaskAttachment[]>(task?.attachments || []);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist || []);
   const [recurrence, setRecurrence] = useState<Recurrence>(task?.recurrence || 'none');
+  const { members, findMember } = useTeam();
+  const [assignedTo, setAssignedTo] = useState<string>(task?.assignedTo || '');
   const [newChecklistText, setNewChecklistText] = useState('');
   const [workNotes, setWorkNotes] = useState('');
 
@@ -76,13 +79,18 @@ const TaskModal: React.FC<TaskModalProps> = ({
       attachments,
       checklist: finalChecklist,
       recurrence,
+      ...((task?.assignedTo || '') !== assignedTo ? { assignedTo: assignedTo || null } : {}),
     });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList) return;
-    const files = Array.from(fileList);
+    const files: File[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList.item(i);
+      if (f) files.push(f);
+    }
     e.target.value = '';
     for (const file of files) {
       try {
@@ -239,6 +247,24 @@ const TaskModal: React.FC<TaskModalProps> = ({
               />
             </div>
 
+            {/* Retorno do responsável */}
+            {task && (task.memberNotes || (task.isCompleted && task.completedByName)) && (
+              <div className="mb-6 bg-violet-50 border border-violet-200 rounded-xl p-4">
+                <h4 className="text-xs font-bold text-violet-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <Users className="w-3 h-3" />
+                  Retorno de {task.completedByName || findMember(task.assignedTo)?.name || 'responsável'}
+                </h4>
+                {task.isCompleted && task.completedByName && (
+                  <p className="text-xs text-violet-800 mb-1">
+                    ✓ Concluída por {task.completedByName}{task.completedAt ? ` em ${new Date(task.completedAt).toLocaleDateString('pt-BR')}` : ''}
+                  </p>
+                )}
+                {task.memberNotes && (
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{task.memberNotes}</p>
+                )}
+              </div>
+            )}
+
             {/* Anexos */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -387,6 +413,30 @@ const TaskModal: React.FC<TaskModalProps> = ({
                   ))}
                 </select>
               </div>
+
+              {/* Responsável (equipe) */}
+              {members.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Users className="w-3 h-3" /> Responsável
+                  </label>
+                  <select
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={assignedTo}
+                    onChange={e => setAssignedTo(e.target.value)}
+                  >
+                    <option value="">Eu mesmo</option>
+                    {members.map(m => (
+                      <option key={m.userId} value={m.userId}>{m.name}</option>
+                    ))}
+                  </select>
+                  {assignedTo && (
+                    <p className="text-[10px] text-violet-600 mt-1 italic leading-tight">
+                      👤 {findMember(assignedTo)?.name} verá título, descrição, notas, subtarefas e anexos desta tarefa e poderá concluí-la.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Datas */}
               <div className="grid grid-cols-2 gap-2">

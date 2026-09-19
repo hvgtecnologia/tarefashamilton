@@ -106,6 +106,11 @@ const rowToTask = (task: any): Task => ({
     completedAt: task.completed_at,
     deletedAt: task.deleted_at,
     attachments: task.attachments || [],
+    assignedTo: task.assigned_to || undefined,
+    completedBy: task.completed_by || undefined,
+    completedByName: task.completed_by_name || undefined,
+    completionSeen: task.completion_seen ?? true,
+    memberNotes: task.member_notes || '',
     createdAt: task.created_at,
     updatedAt: task.updated_at
 });
@@ -174,6 +179,8 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
             checklist: task.checklist || [],
             recurrence: task.recurrence || 'none',
         };
+        // Só envia quando há responsável: sem a migração V5 aplicada, tarefas normais continuam funcionando
+        if (task.assignedTo) payload.assigned_to = task.assignedTo;
 
         let { data, error } = await supabase
             .from('tasks')
@@ -256,6 +263,9 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.status !== undefined) dbUpdates.status = updates.status;
         if (updates.checklist !== undefined) dbUpdates.checklist = updates.checklist;
         if (updates.recurrence !== undefined) dbUpdates.recurrence = updates.recurrence;
+        if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo; // null limpa a delegação
+        if (updates.completionSeen !== undefined) dbUpdates.completion_seen = updates.completionSeen;
+        if (updates.memberNotes !== undefined) dbUpdates.member_notes = updates.memberNotes;
 
         let { data, error } = await supabase
             .from('tasks')

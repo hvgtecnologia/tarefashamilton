@@ -63,11 +63,25 @@ export interface Task {
   completedAt?: string;
   deletedAt?: string;
   attachments: TaskAttachment[];
+  // Equipe: responsável (id do usuário do membro; null limpa a delegação), quem concluiu e retorno do membro
+  assignedTo?: string | null;
+  completedBy?: string;
+  completedByName?: string;
+  completionSeen?: boolean;
+  memberNotes?: string;
   createdAt: string;
   updatedAt?: string;
 }
 
-export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project';
+export interface TeamMember {
+  id: string;
+  userId: string;
+  name: string;
+  username: string;
+  createdAt?: string;
+}
+
+export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team';
 
 export interface AppState {
   tasks: Task[];

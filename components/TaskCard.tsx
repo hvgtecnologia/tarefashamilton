@@ -2,6 +2,7 @@ import React from 'react';
 import { Circle, FileText, Image as ImageIcon, Calendar, CheckSquare, AlertCircle, Repeat } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
 import { URGENCY_CONFIG, getStatusConfig, isOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus, RECURRENCE_SHORT_LABELS } from '../constants';
+import { useTeam, firstName } from './TeamContext';
 
 interface TaskCardProps {
   task: Task;
@@ -14,6 +15,8 @@ interface TaskCardProps {
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, onComplete, onChangeStatus, compact }) => {
+  const { findMember } = useTeam();
+  const assignee = findMember(task.assignedTo);
   const urgencyStyle = URGENCY_CONFIG[task.urgency];
   const statusStyle = getStatusConfig(task.status, loadCustomStatuses());
   const statusIsCustom = task.status && !isNativeStatus(task.status);
@@ -87,6 +90,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
                   {statusStyle.label}
                 </span>
               )
+            )}
+
+            {assignee && (
+              <span
+                className="text-[9px] font-bold pl-0.5 pr-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 flex items-center gap-1 flex-shrink-0"
+                title={`Responsável: ${assignee.name}`}
+              >
+                <span className="w-3.5 h-3.5 rounded-full bg-violet-600 text-white flex items-center justify-center text-[8px] uppercase">
+                  {assignee.name.charAt(0)}
+                </span>
+                {firstName(assignee.name)}
+              </span>
             )}
 
             {task.recurrence && task.recurrence !== 'none' && (

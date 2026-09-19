@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, Mail } from 'lucide-react';
 import { signUp, signIn } from '../lib/supabase';
+import { resolveLoginEmail } from '../lib/team';
 
 interface LoginScreenProps {
     onLogin: () => void;
@@ -37,14 +38,15 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 await signUp(email, password);
                 onLogin();
             } else {
-                // Sign in mode
-                await signIn(email, password);
+                // Sign in mode: aceita e-mail (gestor) ou usuário (membros da equipe)
+                const loginEmail = await resolveLoginEmail(email);
+                await signIn(loginEmail, password);
                 onLogin();
             }
         } catch (err: any) {
             console.error('Auth error:', err);
             if (err.message?.includes('Invalid login credentials')) {
-                setError('Email ou senha incorretos');
+                setError('Usuário/e-mail ou senha incorretos');
             } else if (err.message?.includes('User already registered')) {
                 setError('Este email já está cadastrado. Faça login.');
             } else {
@@ -73,16 +75,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     {/* Email Input */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Email
+                            {isSignUp ? 'Email' : 'Email ou usuário'}
                         </label>
                         <div className="relative">
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                             <input
-                                type="email"
+                                type={isSignUp ? 'email' : 'text'}
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                placeholder="seu@email.com"
+                                placeholder={isSignUp ? 'seu@email.com' : 'seu@email.com ou seu usuário'}
+                                autoCapitalize="none"
+                                autoCorrect="off"
                                 required
                                 autoFocus
                             />
