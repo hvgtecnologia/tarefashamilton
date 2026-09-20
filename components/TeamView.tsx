@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Users, UserPlus, KeyRound, Trash2, RefreshCw, Send, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Users, UserPlus, KeyRound, Trash2, RefreshCw, Send, CheckCircle2, AlertTriangle, Clock, MessageCircle, Pencil, Phone } from 'lucide-react';
 import { Task, TeamMember } from '../types';
 import { todayISO, isOverdue, formatPrettyDate, sortTasksByTime } from '../constants';
+import { hasWhatsapp, whatsappLink, reminderMessage } from '../lib/team';
 
 interface TeamViewProps {
   members: TeamMember[];
@@ -9,6 +10,7 @@ interface TeamViewProps {
   ready: boolean;
   onAddMember: () => void;
   onResetPassword: (member: TeamMember) => void;
+  onEditMember: (member: TeamMember) => void;
   onDeleteMember: (member: TeamMember) => Promise<void>;
   onDelegate: (member: TeamMember) => void;
   onOpenTask: (task: Task) => void;
@@ -25,7 +27,7 @@ const formatCompletion = (iso?: string) => {
 };
 
 const TeamView: React.FC<TeamViewProps> = ({
-  members, tasks, ready, onAddMember, onResetPassword, onDeleteMember, onDelegate, onOpenTask, onMarkSeen, onRefresh,
+  members, tasks, ready, onAddMember, onResetPassword, onEditMember, onDeleteMember, onDelegate, onOpenTask, onMarkSeen, onRefresh,
 }) => {
   const today = todayISO();
   const [refreshing, setRefreshing] = useState(false);
@@ -199,6 +201,13 @@ const TeamView: React.FC<TeamViewProps> = ({
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
+                        onClick={() => onEditMember(member)}
+                        className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"
+                        title="Editar nome/WhatsApp"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => onResetPassword(member)}
                         className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"
                         title="Redefinir senha"
@@ -266,7 +275,7 @@ const TeamView: React.FC<TeamViewProps> = ({
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-3 space-y-2">
                   <button
                     onClick={() => onDelegate(member)}
                     className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 rounded-lg text-sm"
@@ -274,6 +283,28 @@ const TeamView: React.FC<TeamViewProps> = ({
                     <Send className="w-4 h-4" />
                     Delegar tarefa para {member.name.split(' ')[0]}
                   </button>
+
+                  {hasWhatsapp(member) ? (
+                    overdueCount > 0 && (
+                      <a
+                        href={whatsappLink(member.phone, reminderMessage(member, open.filter(t => isOverdue(taskDay(t)))))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold py-2 rounded-lg text-sm"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Cobrar {overdueCount} atrasada{overdueCount > 1 ? 's' : ''} no WhatsApp
+                      </a>
+                    )
+                  ) : (
+                    <button
+                      onClick={() => onEditMember(member)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-violet-600 py-1"
+                    >
+                      <Phone className="w-3 h-3" />
+                      Adicionar WhatsApp para avisar e cobrar em um clique
+                    </button>
+                  )}
                 </div>
               </div>
             );

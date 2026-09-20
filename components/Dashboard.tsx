@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { TrendingUp, AlertTriangle, CheckCircle2, BarChart3, Calendar, FolderKanban, Activity, ArrowUpRight } from 'lucide-react';
+import { TrendingUp, AlertTriangle, CheckCircle2, BarChart3, Calendar, FolderKanban, Activity, ArrowUpRight, Users } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
+import { useTeam } from './TeamContext';
 import { URGENCY_CONFIG, todayISO, isOverdue, formatPrettyDate, parseLocalDate, formatDate } from '../constants';
 import TaskListModal from './TaskListModal';
 
@@ -18,6 +19,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOpenProject, onTaskClick, onCompleteTask, onChangeStatus }) => {
   const today = todayISO();
+  const { members } = useTeam();
   const [activeFilter, setActiveFilter] = useState<KpiFilter | null>(null);
 
   const stats = useMemo(() => {
@@ -97,6 +99,28 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
     }).sort((a, b) => b.pending - a.pending);
   }, [tasks, projects]);
 
+  // Carga por membro da equipe
+  const teamStats = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const mine = tasks.filter(t => !t.isCompleted && !t.assignedTo);
+    const rows = members.map(m => {
+      const open = tasks.filter(t => t.assignedTo === m.userId && !t.isCompleted);
+      return {
+        id: m.userId,
+        name: m.name,
+        open: open.length,
+        overdue: open.filter(t => isOverdue(t.dueDate || t.scheduledDate)).length,
+        doneWeek: tasks.filter(t => t.completedBy === m.userId && t.completedAt && new Date(t.completedAt).getTime() >= weekAgo).length,
+      };
+    }).sort((a, b) => b.open - a.open);
+    return {
+      rows,
+      mine: mine.length,
+      mineOverdue: mine.filter(t => isOverdue(t.dueDate || t.scheduledDate)).length,
+      delegated: tasks.filter(t => !t.isCompleted && t.assignedTo).length,
+    };
+  }, [tasks, members]);
+
   // Stats por categoria
   const categoryStats = useMemo(() => {
     return categories.map(c => {
@@ -150,6 +174,53 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
           onClick={() => setActiveFilter('completed')}
         />
       </div>
+
+      {/* Equipe */}
+      {members.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-violet-600" />
+              <h3 className="font-bold text-slate-800">Carga da equipe</h3>
+            </div>
+            <span className="text-xs text-slate-400">
+              {teamStats.delegated} delegada{teamStats.delegated === 1 ? '' : 's'} · {teamStats.mine} com você
+            </span>
+          </div>
+          <div className="space-y-2">
+            {[{ id: 'me', name: 'Eu (sem delegar)', open: teamStats.mine, overdue: teamStats.mineOverdue, doneWeek: -1 }, ...teamStats.rows].map(row => {
+              const max = Math.max(teamStats.mine, ...teamStats.rows.map(r => r.open), 1);
+              return (
+                <div key={row.id} className="flex items-center gap-3">
+                  <span className={`text-xs w-28 truncate ${row.id === 'me' ? 'text-slate-400 italic' : 'text-slate-600 font-medium'}`}>
+                    {row.name}
+                  </span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden flex">
+                    {row.overdue > 0 && (
+                      <div
+                        className="h-full bg-rose-500 flex items-center justify-center"
+                        style={{ width: `${(row.overdue / max) * 100}%` }}
+                        title={`${row.overdue} atrasada(s)`}
+                      >
+                        <span className="text-[10px] font-bold text-white px-1">{row.overdue}</span>
+                      </div>
+                    )}
+                    <div
+                      className={`h-full flex items-center justify-end pr-2 ${row.id === 'me' ? 'bg-slate-400' : 'bg-gradient-to-r from-violet-400 to-violet-600'}`}
+                      style={{ width: `${((row.open - row.overdue) / max) * 100}%` }}
+                    >
+                      {row.open - row.overdue > 0 && <span className="text-[10px] font-bold text-white">{row.open - row.overdue}</span>}
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-bold w-24 text-right">
+                    {row.doneWeek >= 0 ? `${row.doneWeek} concl. 7d` : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Charts grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

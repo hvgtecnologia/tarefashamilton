@@ -18,13 +18,19 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
   });
 
-// O membro loga com "usuário"; por baixo o Supabase Auth usa um e-mail interno no formato
-// gestor+usuario@dominio. Como é o e-mail do próprio gestor (que tem caixa de entrada real), ninguém
-// de fora consegue "recuperar a senha" do membro. Nenhum e-mail é enviado no fluxo normal.
-function buildLoginEmail(masterEmail: string, username: string): string {
-  const [local, domain] = masterEmail.split("@");
-  const base = local.split("+")[0];
-  return `${base}+${username}@${domain}`;
+// O membro loga com "usuário"; por baixo o Supabase Auth usa usuario@equipe.invalid.
+// ".invalid" é um domínio reservado (RFC 6761) que nunca existe: nenhum e-mail sai daqui,
+// ninguém consegue "recuperar senha" de um membro por fora, e o e-mail do gestor não é exposto.
+// Precisa bater com TEAM_EMAIL_DOMAIN em lib/team.ts.
+const TEAM_EMAIL_DOMAIN = "equipe.invalid";
+const buildLoginEmail = (username: string) => `${username}@${TEAM_EMAIL_DOMAIN}`;
+
+function normalizePhone(raw: unknown): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
 }
 
 function validPassword(password: string): string | null {
@@ -36,7 +42,7 @@ async function findOwnMember(admin: SupabaseClient, masterId: string, memberId: 
   if (typeof memberId !== "string") return null;
   const { data } = await admin
     .from("team_members")
-    .select("id, member_user_id, name, username")
+    .select("id, member_user_id, name, username, phone")
     .eq("id", memberId)
     .eq("master_id", masterId)
     .maybeSingle();
@@ -54,12 +60,11 @@ async function createMember(admin: SupabaseClient, caller: User, body: any) {
   }
   const passwordError = validPassword(password);
   if (passwordError) return json({ error: passwordError }, 400);
-  if (!caller.email) return json({ error: "Sua conta não tem e-mail; não é possível criar membros." }, 400);
 
   const { data: existing } = await admin.from("team_members").select("id").eq("username", username).maybeSingle();
   if (existing) return json({ error: "Esse usuário já existe. Escolha outro." }, 409);
 
-  const loginEmail = buildLoginEmail(caller.email, username);
+  const loginEmail = buildLoginEmail(username);
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email: loginEmail,
     password,
@@ -74,8 +79,11 @@ async function createMember(admin: SupabaseClient, caller: User, body: any) {
 
   const { data: member, error: insertError } = await admin
     .from("team_members")
-    .insert({ master_id: caller.id, member_user_id: created.user.id, name, username, login_email: loginEmail })
-    .select("id, member_user_id, name, username, created_at")
+    .insert({
+      master_id: caller.id, member_user_id: created.user.id, name, username,
+      login_email: loginEmail, phone: normalizePhone(body.phone) || null,
+    })
+    .select("id, member_user_id, name, username, phone, created_at")
     .single();
 
   if (insertError) {
@@ -98,6 +106,25 @@ async function resetPassword(admin: SupabaseClient, caller: User, body: any) {
   const { error } = await admin.auth.admin.updateUserById(member.member_user_id, { password });
   if (error) return json({ error: error.message }, 400);
   return json({ ok: true });
+}
+
+async function updateMember(admin: SupabaseClient, caller: User, body: any) {
+  const member = await findOwnMember(admin, caller.id, body.member_id);
+  if (!member) return json({ error: "Membro não encontrado." }, 404);
+
+  const name = String(body.name ?? "").trim();
+  if (!name || name.length > 80) return json({ error: "Informe o nome do membro." }, 400);
+
+  const { data: updated, error } = await admin
+    .from("team_members")
+    .update({ name, phone: normalizePhone(body.phone) || null })
+    .eq("id", member.id)
+    .select("id, member_user_id, name, username, phone, created_at")
+    .single();
+
+  if (error) return json({ error: error.message }, 400);
+  await admin.auth.admin.updateUserById(member.member_user_id, { user_metadata: { full_name: name, team_member: true } });
+  return json({ member: updated });
 }
 
 async function deleteMember(admin: SupabaseClient, caller: User, body: any) {
@@ -135,6 +162,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     switch (body?.action) {
       case "create": return await createMember(admin, caller, body);
+      case "update": return await updateMember(admin, caller, body);
       case "reset_password": return await resetPassword(admin, caller, body);
       case "delete": return await deleteMember(admin, caller, body);
       default: return json({ error: "Ação inválida." }, 400);

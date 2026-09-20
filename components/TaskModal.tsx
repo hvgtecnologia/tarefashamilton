@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Trash2, FileText, Plus, Calendar, Save, Edit3, Eye, Paperclip,
-  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users
+  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle
 } from 'lucide-react';
 import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
 import { uploadAttachment } from '../lib/storage';
 import { useTeam } from './TeamContext';
+import { hasWhatsapp, whatsappLink, newTaskMessage } from '../lib/team';
 
 interface TaskModalProps {
   task: Task | null;
@@ -512,6 +513,24 @@ const TaskModal: React.FC<TaskModalProps> = ({
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-200 flex flex-col space-y-2">
+              {(() => {
+                const assignee = findMember(assignedTo);
+                if (!assignee || !hasWhatsapp(assignee) || !title.trim()) return null;
+                const message = newTaskMessage(assignee, { title: title.trim(), scheduledDate, scheduledTime, notes });
+                // Âncora (não window.open) para o navegador não bloquear o WhatsApp como pop-up
+                return (
+                  <a
+                    href={whatsappLink(assignee.phone, message)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handleSave}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow-md shadow-emerald-500/30 transition-all flex items-center justify-center"
+                  >
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Salvar e avisar {assignee.name.split(' ')[0]}
+                  </a>
+                );
+              })()}
               <button
                 onClick={handleSave}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-md shadow-blue-500/30 transition-all flex items-center justify-center"

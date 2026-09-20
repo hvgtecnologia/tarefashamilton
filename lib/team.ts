@@ -1,5 +1,11 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
-import { TeamMember } from '../types';
+import { Task, TeamMember } from '../types';
+import { formatPrettyDate } from '../constants';
+
+// Domínio interno dos logins de equipe. ".invalid" é reservado (RFC 6761): nunca existe de verdade,
+// então nenhum e-mail sai daqui e ninguém consegue "recuperar senha" de um membro por fora.
+// Quem redefine senha é o gestor, dentro do app.
+export const TEAM_EMAIL_DOMAIN = 'equipe.invalid';
 
 export interface TeamContextData {
   role: 'master' | 'member';
@@ -14,6 +20,7 @@ const rowToMember = (row: any): TeamMember => ({
   userId: row.member_user_id,
   name: row.name,
   username: row.username,
+  phone: row.phone || undefined,
   createdAt: row.created_at,
 });
 
@@ -44,14 +51,11 @@ export async function loadTeamContext(): Promise<TeamContextData> {
   return { role: 'master', members: (data || []).filter(r => r.master_id === user.id).map(rowToMember), ready: true };
 }
 
-// "bernardo" -> e-mail interno do membro; se já for e-mail, devolve como está
-export async function resolveLoginEmail(identifier: string): Promise<string> {
+// "bernardo" -> bernardo@equipe.invalid; se já for e-mail (gestor), devolve como está
+export function resolveLoginEmail(identifier: string): string {
   const value = identifier.trim();
   if (value.includes('@')) return value;
-
-  const { data, error } = await supabase.rpc('team_login_email', { p_username: value });
-  if (error || !data) throw new Error('Usuário ou senha incorretos');
-  return data as string;
+  return `${value.toLowerCase()}@${TEAM_EMAIL_DOMAIN}`;
 }
 
 async function callTeamFunction(body: Record<string, unknown>): Promise<any> {
@@ -87,6 +91,76 @@ export async function resetTeamMemberPassword(memberId: string, password: string
 export async function deleteTeamMember(memberId: string): Promise<void> {
   await callTeamFunction({ action: 'delete', member_id: memberId });
 }
+
+export async function updateTeamMember(memberId: string, input: { name: string; phone: string }): Promise<TeamMember> {
+  const data = await callTeamFunction({ action: 'update', member_id: memberId, ...input });
+  return rowToMember(data.member);
+}
+
+// ==================== WhatsApp ====================
+
+// Aceita "(31) 98765-4321", "31987654321", "+55 31 98765-4321" -> "5531987654321"
+export function normalizePhone(raw?: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+export function hasWhatsapp(member?: TeamMember): boolean {
+  return normalizePhone(member?.phone).length >= 12;
+}
+
+export function whatsappLink(phone: string | undefined, message: string): string {
+  return `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(message)}`;
+}
+
+const appUrl = () => (typeof window !== 'undefined' ? window.location.origin : '');
+
+export function accessMessage(member: { name: string; username: string }, password: string): string {
+  return [
+    `Oi ${firstName(member.name)}! Criei seu acesso ao nosso planner de tarefas.`,
+    '',
+    `Site: ${appUrl()}`,
+    `Usuário: ${member.username}`,
+    `Senha: ${password}`,
+    '',
+    'É só entrar que suas tarefas aparecem lá.',
+  ].join('\n');
+}
+
+export function newTaskMessage(member: TeamMember, task: { title: string; scheduledDate?: string; scheduledTime?: string; notes?: string }): string {
+  const when = task.scheduledDate
+    ? `Para: ${formatPrettyDate(task.scheduledDate)}${task.scheduledTime ? ` às ${task.scheduledTime}` : ''}`
+    : '';
+  return [
+    `Oi ${firstName(member.name)}, nova tarefa pra você:`,
+    '',
+    task.title,
+    when,
+    task.notes ? `\n${task.notes}` : '',
+    '',
+    `Detalhes e conclusão em: ${appUrl()}`,
+  ].filter(Boolean).join('\n');
+}
+
+export function reminderMessage(member: TeamMember, tasks: Task[]): string {
+  const lines = tasks.slice(0, 10).map(t => {
+    const due = t.scheduledDate || t.dueDate;
+    return `- ${t.title}${due ? ` (era ${formatPrettyDate(due)})` : ''}`;
+  });
+  return [
+    `Oi ${firstName(member.name)}, tudo bem?`,
+    tasks.length === 1 ? 'Essa tarefa está atrasada:' : `Essas ${tasks.length} tarefas estão atrasadas:`,
+    '',
+    ...lines,
+    '',
+    `Consegue me dar um retorno? ${appUrl()}`,
+  ].join('\n');
+}
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 // Sugere um usuário a partir do nome: "João Silva" -> "joao.silva"
 export function suggestUsername(name: string): string {

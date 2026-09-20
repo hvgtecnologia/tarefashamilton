@@ -78,6 +78,7 @@ export interface TeamMember {
   userId: string;
   name: string;
   username: string;
+  phone?: string;
   createdAt?: string;
 }
 

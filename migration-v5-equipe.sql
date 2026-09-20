@@ -22,6 +22,7 @@ create table if not exists public.team_members (
   name text not null,
   username text not null unique check (username = lower(username)),
   login_email text not null,
+  phone text,
   created_at timestamptz default now()
 );
 
@@ -96,18 +97,10 @@ begin
 end;
 $$;
 
--- Login por usuário (sem @): a tela de login descobre o e-mail interno do membro
-create or replace function public.team_login_email(p_username text)
-returns text
-language sql stable security definer set search_path = public
-as $$
-  select login_email from public.team_members
-  where username = lower(trim(p_username))
-  limit 1;
-$$;
-
-revoke all on function public.team_login_email(text) from public;
-grant execute on function public.team_login_email(text) to anon, authenticated;
+-- Sem função de lookup de login de propósito: o app monta o e-mail interno
+-- (usuario@equipe.invalid) sozinho. Assim ninguém deslogado consegue descobrir
+-- quais usuários existem nem qual é o e-mail do gestor.
+drop function if exists public.team_login_email(text);
 
 -- =====================================================================
 -- 4. Policies de tasks
@@ -170,6 +163,11 @@ begin
 
   if (to_jsonb(new) - v_allowed) is distinct from (to_jsonb(old) - v_allowed) then
     raise exception 'Membros só podem atualizar o andamento da tarefa' using errcode = '42501';
+  end if;
+
+  -- Pode anexar comprovantes, mas não apagar o que o gestor anexou
+  if not (coalesce(new.attachments, '[]'::jsonb) @> coalesce(old.attachments, '[]'::jsonb)) then
+    raise exception 'Membros não podem remover anexos da tarefa' using errcode = '42501';
   end if;
 
   -- status "done" sempre significa concluída

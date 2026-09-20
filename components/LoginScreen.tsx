@@ -39,7 +39,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 onLogin();
             } else {
                 // Sign in mode: aceita e-mail (gestor) ou usuário (membros da equipe)
-                const loginEmail = await resolveLoginEmail(email);
+                const loginEmail = resolveLoginEmail(email);
                 await signIn(loginEmail, password);
                 onLogin();
             }

@@ -19,7 +19,7 @@ import MemberApp from './components/MemberApp';
 import { TeamProvider } from './components/TeamContext';
 import { LoginScreen } from './components/LoginScreen';
 import { buildRecurringClone } from './lib/recurrence';
-import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember } from './lib/team';
+import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember, updateTeamMember } from './lib/team';
 import {
   getTasks, addTask as addTaskToStorage, updateTask as updateTaskInStorage,
   deleteTask as deleteTaskFromStorage,
@@ -314,9 +314,18 @@ const App: React.FC = () => {
 
   // ============ Equipe ============
 
-  const handleCreateMember = async (input: { name: string; username: string; password: string }) => {
+  const sortMembers = (list: TeamMember[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+
+  const handleCreateMember = async (input: { name: string; username: string; password: string; phone: string }) => {
     const member = await createTeamMember(input);
-    setTeamMembers(prev => [...prev, member].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+    setTeamMembers(prev => sortMembers([...prev, member]));
+    return member;
+  };
+
+  const handleUpdateMember = async (memberId: string, input: { name: string; phone: string }) => {
+    const member = await updateTeamMember(memberId, input);
+    setTeamMembers(prev => sortMembers(prev.map(m => (m.id === memberId ? member : m))));
     return member;
   };
 
@@ -695,6 +704,7 @@ const App: React.FC = () => {
               ready={teamReady}
               onAddMember={() => setTeamModal({ kind: 'create' })}
               onResetPassword={(member) => setTeamModal({ kind: 'reset', member })}
+              onEditMember={(member) => setTeamModal({ kind: 'edit', member })}
               onDeleteMember={handleDeleteMember}
               onDelegate={(member) => openQuickAdd({ assignedTo: member.userId, date: today })}
               onOpenTask={(task) => openTaskModal(task)}
@@ -814,6 +824,7 @@ const App: React.FC = () => {
           onClose={() => setTeamModal(null)}
           onCreate={handleCreateMember}
           onReset={resetTeamMemberPassword}
+          onUpdate={handleUpdateMember}
         />
       )}
     </div>
