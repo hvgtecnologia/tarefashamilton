@@ -69,6 +69,7 @@ export interface Task {
   completedByName?: string;
   completionSeen?: boolean;
   memberNotes?: string;
+  nextSpawned?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

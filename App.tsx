@@ -275,12 +275,15 @@ const App: React.FC = () => {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, ...finalUpdates, updatedAt: new Date().toISOString() } : t));
 
       // Recria a próxima ocorrência ao concluir uma tarefa recorrente, qualquer que tenha sido o caminho usado para concluí-la.
-      if (current && !current.isCompleted && finalUpdates.isCompleted === true && current.recurrence && current.recurrence !== 'none') {
+      // Só uma vez por tarefa: reabrir e concluir de novo não cria uma segunda cópia da próxima ocorrência.
+      if (current && !current.isCompleted && !current.nextSpawned && finalUpdates.isCompleted === true && current.recurrence && current.recurrence !== 'none') {
         const merged: Task = { ...current, ...finalUpdates };
         const clone = buildRecurringClone(merged);
         try {
           const newTask = await addTaskToStorage({ ...clone, position: tasks.length });
-          setTasks(prev => [...prev, newTask]);
+          setTasks(prev => [...prev, newTask].map(t => (t.id === id ? { ...t, nextSpawned: true } : t)));
+          // Melhor esforço: sem a migração V6 essa coluna não existe e a chamada só registra o aviso
+          void updateTaskInStorage(id, { nextSpawned: true });
         } catch (e) {
           console.error('Error recreating recurring task:', e);
         }

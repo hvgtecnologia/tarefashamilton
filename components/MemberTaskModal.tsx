@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
   X, CheckSquare, Square, Paperclip, FileText, Plus, CheckCircle2, Calendar, Clock, Flag,
-  FolderKanban, Tag, Save, AlertCircle,
+  FolderKanban, Tag, Save, AlertCircle, RotateCcw,
 } from 'lucide-react';
 import { Task, Category, Project, TaskAttachment, ChecklistItem, TaskStatus } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, formatPrettyDate, isOverdue } from '../constants';
@@ -13,17 +13,19 @@ interface MemberTaskModalProps {
   project?: Project;
   onClose: () => void;
   onSave: (updates: Partial<Task>) => Promise<boolean>;
+  onReopen?: () => Promise<boolean>;
 }
 
 const MEMBER_STATUSES: TaskStatus[] = ['todo', 'doing', 'blocked'];
 
-const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, project, onClose, onSave }) => {
+const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, project, onClose, onSave, onReopen }) => {
   const readOnly = task.isCompleted;
   const [status, setStatus] = useState<TaskStatus>(task.status && task.status !== 'done' ? task.status : 'todo');
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task.checklist || []);
   const [memberNotes, setMemberNotes] = useState(task.memberNotes || '');
   const [attachments, setAttachments] = useState<TaskAttachment[]>(task.attachments || []);
   const [saving, setSaving] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,7 +65,7 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
   };
 
   const submit = async (complete: boolean) => {
-    if (complete && !confirm('Concluir esta tarefa?\n\nDepois de concluída, só o gestor pode reabri-la.')) return;
+    if (complete && !confirm('Concluir esta tarefa?\n\nSe precisar, você pode reabri-la depois em "Concluídas".')) return;
     setSaving(true);
     setError('');
     const updates: Partial<Task> = { status, checklist, memberNotes: memberNotes.trim(), attachments };
@@ -76,6 +78,16 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
     setSaving(false);
     if (ok) onClose();
     else setError('Não foi possível salvar. Verifique a conexão e tente novamente.');
+  };
+
+  const reopen = async () => {
+    if (!onReopen) return;
+    setReopening(true);
+    setError('');
+    const ok = await onReopen();
+    setReopening(false);
+    if (ok) onClose();
+    else setError('Não foi possível reabrir. Verifique a conexão e tente novamente.');
   };
 
   return (
@@ -279,6 +291,19 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
         </div>
 
         {/* Rodapé */}
+        {readOnly && onReopen && (
+          <div className="p-4 border-t bg-slate-50">
+            <button
+              onClick={reopen}
+              disabled={reopening}
+              className="w-full flex items-center justify-center gap-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 disabled:opacity-60 text-amber-800 font-bold py-3 rounded-xl text-sm"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {reopening ? 'Reabrindo...' : 'Reabrir tarefa'}
+            </button>
+            <p className="text-[11px] text-slate-400 text-center mt-2">Ela volta para "A fazer" e o aviso de conclusão é desfeito.</p>
+          </div>
+        )}
         {!readOnly && (
           <div className="p-4 border-t bg-slate-50 flex gap-2">
             <button

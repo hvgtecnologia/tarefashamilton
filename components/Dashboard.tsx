@@ -110,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
         name: m.name,
         open: open.length,
         overdue: open.filter(t => isOverdue(t.dueDate || t.scheduledDate)).length,
-        doneWeek: tasks.filter(t => t.completedBy === m.userId && t.completedAt && new Date(t.completedAt).getTime() >= weekAgo).length,
+        doneWeek: tasks.filter(t => t.isCompleted && t.completedBy === m.userId && t.completedAt && new Date(t.completedAt).getTime() >= weekAgo).length,
       };
     }).sort((a, b) => b.open - a.open);
     return {

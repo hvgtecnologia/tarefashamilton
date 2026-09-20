@@ -50,7 +50,7 @@ const TeamView: React.FC<TeamViewProps> = ({
       const dated = rest.filter(t => taskDay(t)).sort((a, b) =>
         (taskDay(a) || '').localeCompare(taskDay(b) || '') || (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
       const undated = sortTasksByTime(rest.filter(t => !taskDay(t)));
-      const doneRecently = tasks.filter(t => t.completedBy === member.userId && t.completedAt && new Date(t.completedAt).getTime() >= monthAgo).length;
+      const doneRecently = tasks.filter(t => t.isCompleted && t.completedBy === member.userId && t.completedAt && new Date(t.completedAt).getTime() >= monthAgo).length;
       return { member, open: [...overdue, ...dated, ...undated], overdueCount: overdue.length, doneRecently };
     });
   }, [members, tasks]);

@@ -8,6 +8,8 @@ interface CalendarViewProps {
     projects: Project[];
     onDayClick: (date: Date) => void;
     onTaskClick: (task: Task) => void;
+    // Dentro de outra tela (ex: visão do membro): não ocupa a altura toda da janela
+    embedded?: boolean;
 }
 
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -17,7 +19,7 @@ const MONTHS = [
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-export function CalendarView({ tasks, projects, onDayClick, onTaskClick }: CalendarViewProps) {
+export function CalendarView({ tasks, projects, onDayClick, onTaskClick, embedded = false }: CalendarViewProps) {
     const [currentDate, setCurrentDate] = React.useState(new Date());
 
     const year = currentDate.getFullYear();
@@ -83,7 +85,7 @@ export function CalendarView({ tasks, projects, onDayClick, onTaskClick }: Calen
     };
 
     return (
-        <div className="h-screen flex flex-col bg-slate-50">
+        <div className={embedded ? 'flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden' : 'h-screen flex flex-col bg-slate-50'}>
             {/* Header */}
             <div className="bg-white border-b border-slate-200 px-6 py-4">
                 <div className="flex items-center justify-between">
@@ -119,7 +121,7 @@ export function CalendarView({ tasks, projects, onDayClick, onTaskClick }: Calen
             </div>
 
             {/* Calendar Grid */}
-            <div className="flex-1 p-6 overflow-auto">
+            <div className={embedded ? 'p-4 overflow-x-auto' : 'flex-1 p-6 overflow-auto'}>
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     {/* Days of week header - Hidden on mobile, shown on md+ */}
                     <div className="hidden md:grid grid-cols-7 border-b border-slate-200 bg-slate-50">

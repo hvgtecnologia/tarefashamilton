@@ -120,6 +120,7 @@ const rowToTask = (task: any): Task => ({
     completedByName: task.completed_by_name || undefined,
     completionSeen: task.completion_seen ?? true,
     memberNotes: task.member_notes || '',
+    nextSpawned: task.next_spawned ?? false,
     createdAt: task.created_at,
     updatedAt: task.updated_at
 });
@@ -275,6 +276,7 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo; // null limpa a delegação
         if (updates.completionSeen !== undefined) dbUpdates.completion_seen = updates.completionSeen;
         if (updates.memberNotes !== undefined) dbUpdates.member_notes = updates.memberNotes;
+        if (updates.nextSpawned !== undefined) dbUpdates.next_spawned = updates.nextSpawned;
 
         let { data, error } = await supabase
             .from('tasks')

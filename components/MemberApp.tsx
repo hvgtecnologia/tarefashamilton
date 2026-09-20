@@ -1,19 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LogOut, RefreshCw, CheckCircle2, AlertTriangle, ClipboardList, PartyPopper, KeyRound } from 'lucide-react';
+import { LogOut, RefreshCw, CheckCircle2, AlertTriangle, ClipboardList, PartyPopper, KeyRound, CalendarDays, Columns, RotateCcw } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
 import { getTasks, getCategories, getProjects, updateTask } from '../lib/storage';
 import { signOut } from '../lib/supabase';
-import { todayISO, sortTasksByTime, formatPrettyDate } from '../constants';
+import { todayISO, sortTasksByTime, formatPrettyDate, getStartOfWeek } from '../constants';
 import TaskCard from './TaskCard';
 import MemberTaskModal from './MemberTaskModal';
 import ChangePasswordModal from './ChangePasswordModal';
+import MemberWeekView from './MemberWeekView';
+import { CalendarView } from './CalendarView';
 
 interface MemberAppProps {
   memberName: string;
   onLogout: () => void;
 }
 
-type Tab = 'open' | 'done';
+type Tab = 'week' | 'calendar' | 'open' | 'done';
+
+const TAB_KEY = 'planner-member-tab';
+const TABS: Tab[] = ['week', 'calendar', 'open', 'done'];
+
+// Lembra a última visão escolhida neste aparelho (semana por padrão: é como o membro se programa)
+const loadTab = (): Tab => {
+  try {
+    const saved = localStorage.getItem(TAB_KEY) as Tab | null;
+    return saved && TABS.includes(saved) ? saved : 'week';
+  } catch {
+    return 'week';
+  }
+};
 
 const taskDay = (t: Task) => t.scheduledDate || t.dueDate;
 
@@ -24,11 +39,17 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('open');
+  const [tab, setTabState] = useState<Tab>(loadTab);
+  const [weekStart, setWeekStart] = useState<Date>(() => getStartOfWeek(new Date()));
   const [selected, setSelected] = useState<Task | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const lastFetch = useRef(0);
   const today = todayISO();
+
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    try { localStorage.setItem(TAB_KEY, next); } catch { /* sem armazenamento: só não lembra */ }
+  };
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -98,9 +119,26 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
   };
 
   const quickComplete = async (task: Task) => {
-    if (!confirm(`Concluir "${task.title}"?\n\nDepois de concluída, só o gestor pode reabri-la.`)) return;
+    if (!confirm(`Concluir "${task.title}"?\n\nSe precisar, você pode reabrir depois em "Concluídas".`)) return;
     const ok = await applyUpdate(task.id, { status: 'done', isCompleted: true, completedAt: new Date().toISOString() });
     if (!ok) setError('Não foi possível concluir a tarefa. Tente novamente.');
+  };
+
+  const reopenTask = async (task: Task): Promise<boolean> => {
+    const ok = await applyUpdate(task.id, { status: 'todo', isCompleted: false });
+    if (!ok) setError('Não foi possível reabrir a tarefa. Tente novamente.');
+    return ok;
+  };
+
+  // Calendário do mês: tarefa só com prazo (sem data de execução) também aparece no dia do prazo
+  const calendarTasks = useMemo(
+    () => tasks.map(t => (t.scheduledDate || !t.dueDate ? t : { ...t, scheduledDate: t.dueDate })),
+    [tasks]
+  );
+
+  const openDay = (date: Date) => {
+    setWeekStart(getStartOfWeek(date));
+    setTab('week');
   };
 
   const handleLogout = async () => {
@@ -144,7 +182,7 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="max-w-3xl mx-auto px-4 py-6 pb-16 space-y-6">
+      <div className={`${tab === 'week' || tab === 'calendar' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto px-4 py-6 pb-16 space-y-6`}>
         {/* Topo */}
         <div className="bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex items-start justify-between gap-3">
@@ -201,31 +239,49 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
         )}
 
         {/* Abas */}
-        <div className="flex bg-slate-200/70 p-1 rounded-xl w-fit">
-          <button
-            onClick={() => setTab('open')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === 'open' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4" />
-            A fazer ({groups.total})
-          </button>
-          <button
-            onClick={() => setTab('done')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === 'done' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            Concluídas ({completed.length})
-          </button>
+        <div className="flex flex-wrap bg-slate-200/70 p-1 rounded-xl w-fit gap-0.5">
+          {([
+            { id: 'week', label: 'Semana', icon: <Columns className="w-4 h-4" /> },
+            { id: 'calendar', label: 'Calendário', icon: <CalendarDays className="w-4 h-4" /> },
+            { id: 'open', label: `Lista (${groups.total})`, icon: <ClipboardList className="w-4 h-4" /> },
+            { id: 'done', label: `Concluídas (${completed.length})`, icon: <CheckCircle2 className="w-4 h-4" /> },
+          ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : tab === 'week' ? (
+          <MemberWeekView
+            tasks={tasks}
+            categories={categories}
+            projects={projects}
+            weekStart={weekStart}
+            onWeekChange={setWeekStart}
+            onTaskClick={setSelected}
+            onComplete={quickComplete}
+            onChangeStatus={quickStatus}
+          />
+        ) : tab === 'calendar' ? (
+          <CalendarView
+            tasks={calendarTasks}
+            projects={projects}
+            onDayClick={openDay}
+            onTaskClick={setSelected}
+            embedded
+          />
         ) : tab === 'open' ? (
           groups.total === 0 ? (
             <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center">
@@ -261,6 +317,17 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
                     {task.completedAt ? `Concluída em ${formatPrettyDate(task.completedAt.slice(0, 10))}` : 'Concluída'}
                   </p>
                 </div>
+                <span
+                  role="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Reabrir "${task.title}"?`)) reopenTask(task);
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg flex-shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reabrir
+                </span>
               </button>
             ))}
           </div>
@@ -276,6 +343,7 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
           project={selected.projectId ? projects.find(p => p.id === selected.projectId) : undefined}
           onClose={() => setSelected(null)}
           onSave={(updates) => applyUpdate(selected.id, updates)}
+          onReopen={() => reopenTask(selected)}
         />
       )}
     </div>
