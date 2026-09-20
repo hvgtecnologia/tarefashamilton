@@ -19,13 +19,14 @@ import MemberApp from './components/MemberApp';
 import { TeamProvider } from './components/TeamContext';
 import { LoginScreen } from './components/LoginScreen';
 import { buildRecurringClone } from './lib/recurrence';
+import { COMPLETED_RETENTION_DAYS, isExpiredCompleted, unreferencedFilePaths } from './lib/retention';
 import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember, updateTeamMember } from './lib/team';
 import {
   getTasks, addTask as addTaskToStorage, updateTask as updateTaskInStorage,
   deleteTask as deleteTaskFromStorage,
   getCategories, addCategory as addCategoryToStorage, deleteCategory as deleteCategoryFromStorage,
   getProjects, addProject as addProjectToStorage, updateProject as updateProjectToStorage,
-  deleteProject as deleteProjectFromStorage, getCurrentUserId
+  deleteProject as deleteProjectFromStorage, getCurrentUserId, deleteAttachmentFiles
 } from './lib/storage';
 import { getSession, onAuthStateChange } from './lib/supabase';
 
@@ -52,6 +53,7 @@ const App: React.FC = () => {
   const [teamReady, setTeamReady] = useState(false);
   const [memberName, setMemberName] = useState('');
   const [teamModal, setTeamModal] = useState<TeamMemberModalMode | null>(null);
+  const [purgeNotice, setPurgeNotice] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
 
@@ -72,6 +74,36 @@ const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Apaga do histórico as concluídas com mais de COMPLETED_RETENTION_DAYS dias (e os arquivos que só elas usavam).
+  // Roda em segundo plano depois de carregar; no máximo 500 por vez.
+  const purgeExpiredCompleted = useCallback(async (visible: Task[], trashed: Task[]) => {
+    const expired = visible.filter(t => isExpiredCompleted(t)).slice(0, 500);
+    if (expired.length === 0) return;
+
+    const removed: Task[] = [];
+    for (let i = 0; i < expired.length; i += 10) {
+      const batch = expired.slice(i, i + 10);
+      const outcomes = await Promise.all(batch.map(async t => ({ t, ok: await deleteTaskFromStorage(t.id).catch(() => false) })));
+      outcomes.forEach(o => { if (o.ok) removed.push(o.t); });
+    }
+    if (removed.length === 0) return;
+
+    const removedIds = new Set(removed.map(t => t.id));
+    setTasks(prev => prev.filter(t => !removedIds.has(t.id)));
+
+    const remaining = [...visible, ...trashed].filter(t => !removedIds.has(t.id));
+    await deleteAttachmentFiles(unreferencedFilePaths(removed, remaining)).catch(() => {});
+
+    const plural = removed.length > 1;
+    setPurgeNotice(`${removed.length} tarefa${plural ? 's' : ''} concluída${plural ? 's' : ''} há mais de ${COMPLETED_RETENTION_DAYS} dias ${plural ? 'foram apagadas' : 'foi apagada'} do histórico.`);
+  }, []);
+
+  useEffect(() => {
+    if (!purgeNotice) return;
+    const timer = setTimeout(() => setPurgeNotice(''), 12000);
+    return () => clearTimeout(timer);
+  }, [purgeNotice]);
 
   // Carrega dados quando autenticado
   useEffect(() => {
@@ -134,8 +166,11 @@ const App: React.FC = () => {
           return t;
         }));
 
-        setTasks(fixed.filter(t => !t.deletedAt));
-        setDeletedTasks(fixed.filter(t => t.deletedAt));
+        const visibleTasks = fixed.filter(t => !t.deletedAt);
+        const trashedTasks = fixed.filter(t => t.deletedAt);
+        setTasks(visibleTasks);
+        setDeletedTasks(trashedTasks);
+        purgeExpiredCompleted(visibleTasks, trashedTasks);
       } catch (e) {
         console.error('Error loading data:', e);
         setTeamRole(role => (role === 'loading' ? 'master' : role));
@@ -303,10 +338,15 @@ const App: React.FC = () => {
   };
 
   const permanentlyDeleteTask = async (id: string) => {
+    const target = tasks.find(t => t.id === id) || deletedTasks.find(t => t.id === id);
     try {
       await deleteTaskFromStorage(id);
       setTasks(prev => prev.filter(t => t.id !== id));
       setDeletedTasks(prev => prev.filter(t => t.id !== id));
+      if (target) {
+        const remaining = [...tasks, ...deletedTasks].filter(t => t.id !== id);
+        deleteAttachmentFiles(unreferencedFilePaths([target], remaining)).catch(() => {});
+      }
     } catch (e) {
       console.error('Error permanently deleting task:', e);
     }
@@ -816,6 +856,13 @@ const App: React.FC = () => {
           tasks={tasks}
           onClose={() => setIsCalendarSyncOpen(false)}
         />
+      )}
+
+      {purgeNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 max-w-[92vw]">
+          <span>🧹 {purgeNotice}</span>
+          <button onClick={() => setPurgeNotice('')} className="text-slate-300 hover:text-white text-xs font-bold">OK</button>
+        </div>
       )}
 
       {teamModal && (

@@ -1,9 +1,10 @@
 
 import React, { useMemo, useState } from 'react';
-import { X, RotateCcw, Trash2, Calendar, CheckCircle, Search, Users } from 'lucide-react';
+import { X, RotateCcw, Trash2, Calendar, CheckCircle, Search, Users, Clock } from 'lucide-react';
 import { Task, Category } from '../types';
 import { URGENCY_CONFIG } from '../constants';
 import { useTeam, firstName } from './TeamContext';
+import { COMPLETED_RETENTION_DAYS, daysUntilPurge } from '../lib/retention';
 
 interface HistoryModalProps {
   tasks: Task[];
@@ -64,7 +65,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
                 {tab === 'completed' ? 'Histórico de tarefas concluídas' : 'Lixeira'}
               </h2>
               <p className="text-xs text-slate-500">
-                {tab === 'completed' ? 'Tudo que já foi concluído, por você ou pela equipe' : 'Restaure ou exclua definitivamente'}
+                {tab === 'completed' ? `Guardadas por ${COMPLETED_RETENTION_DAYS} dias (você ou a equipe) e depois apagadas automaticamente` : 'Restaure ou exclua definitivamente'}
               </p>
             </div>
           </div>
@@ -144,6 +145,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
                 const cat = categories.find(c => c.id === task.category);
                 const doneBy = task.completedByName || (task.completedBy ? memberName(task.completedBy) : undefined);
                 const delegatedTo = memberName(task.assignedTo);
+                const daysLeft = tab === 'completed' && task.completionSeen !== false ? daysUntilPurge(task.completedAt) : null;
 
                 return (
                   <div key={task.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 transition-colors">
@@ -163,6 +165,15 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
                             ? (task.completedAt ? new Date(task.completedAt).toLocaleDateString('pt-BR') : '')
                             : (task.deletedAt ? new Date(task.deletedAt).toLocaleDateString('pt-BR') : '')}
                         </span>
+                        {daysLeft !== null && daysLeft <= 7 && (
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center ${daysLeft <= 3 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                            title={`Será apagada automaticamente em ${daysLeft} dia(s)`}
+                          >
+                            <Clock className="w-2 h-2 mr-1" />
+                            {daysLeft}d
+                          </span>
+                        )}
                         {tab === 'completed' && doneBy && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
                             ✓ {firstName(doneBy)}
@@ -215,7 +226,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
           <div className="flex items-center justify-between text-xs">
             <p className="text-slate-500">
               {tab === 'completed'
-                ? <>💡 <strong>Histórico completo:</strong> as concluídas ficam guardadas aqui. "Restaurar" reabre a tarefa.</>
+                ? <>💡 <strong>Limpeza automática:</strong> concluídas há mais de {COMPLETED_RETENTION_DAYS} dias são apagadas. "Restaurar" reabre a tarefa.</>
                 : <>💡 <strong>Reversível:</strong> "Excluir" em uma tarefa manda ela pra cá antes de sumir de vez</>}
             </p>
             <span className="text-slate-400 whitespace-nowrap ml-3">

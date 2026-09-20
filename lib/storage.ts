@@ -1,7 +1,6 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { Task, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment } from '../types';
-
-const ATTACHMENTS_BUCKET = 'attachments';
+import { ATTACHMENTS_BUCKET } from './retention';
 
 const STORAGE_KEY = 'planner-hamilton-tasks';
 const CATEGORIES_KEY = 'planner-hamilton-categories';
@@ -55,6 +54,16 @@ function fileToDataUrl(file: File): Promise<string> {
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
+}
+
+// Remove arquivos do Storage (em lotes). Só apaga o que está na pasta do próprio usuário: a regra do
+// banco ignora o resto, então nunca dá para apagar arquivo de outra pessoa por aqui.
+export async function deleteAttachmentFiles(paths: string[]): Promise<void> {
+    if (!isSupabaseConfigured() || paths.length === 0) return;
+    for (let i = 0; i < paths.length; i += 100) {
+        const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths.slice(i, i + 100));
+        if (error) console.error('Erro ao apagar arquivos do Storage:', error.message);
+    }
 }
 
 // Sobe o arquivo pro Supabase Storage (link leve na tarefa em vez de base64 pesado no banco).

@@ -88,6 +88,26 @@ export async function resetTeamMemberPassword(memberId: string, password: string
   await callTeamFunction({ action: 'reset_password', member_id: memberId, password });
 }
 
+// O próprio membro troca a senha. Confirma a senha atual entrando de novo (protege contra celular
+// desbloqueado na mão de outra pessoa e deixa a sessão "recente", que o Supabase exige) e, depois de
+// trocar, derruba as outras sessões abertas em outros aparelhos.
+export async function changeOwnPassword(currentPassword: string, newPassword: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user?.email) throw new Error('Sessão inválida. Entre novamente.');
+
+  const { error: verifyError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
+  if (verifyError) throw new Error('A senha atual está incorreta.');
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    if (/different|same/i.test(error.message)) throw new Error('A nova senha precisa ser diferente da atual.');
+    if (/at least|weak|characters/i.test(error.message)) throw new Error('A nova senha é muito fraca. Use pelo menos 6 caracteres.');
+    throw new Error('Não foi possível trocar a senha. Tente novamente.');
+  }
+
+  await supabase.auth.signOut({ scope: 'others' }).catch(() => { /* não bloqueia a troca */ });
+}
+
 export async function deleteTeamMember(memberId: string): Promise<void> {
   await callTeamFunction({ action: 'delete', member_id: memberId });
 }

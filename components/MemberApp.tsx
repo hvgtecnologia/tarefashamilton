@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LogOut, RefreshCw, CheckCircle2, AlertTriangle, ClipboardList, PartyPopper } from 'lucide-react';
+import { LogOut, RefreshCw, CheckCircle2, AlertTriangle, ClipboardList, PartyPopper, KeyRound } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
 import { getTasks, getCategories, getProjects, updateTask } from '../lib/storage';
 import { signOut } from '../lib/supabase';
 import { todayISO, sortTasksByTime, formatPrettyDate } from '../constants';
 import TaskCard from './TaskCard';
 import MemberTaskModal from './MemberTaskModal';
+import ChangePasswordModal from './ChangePasswordModal';
 
 interface MemberAppProps {
   memberName: string;
@@ -25,6 +26,7 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('open');
   const [selected, setSelected] = useState<Task | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const lastFetch = useRef(0);
   const today = todayISO();
 
@@ -160,6 +162,14 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
+              <button
+                onClick={() => setShowPasswordModal(true)}
+                className="px-3 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl flex items-center gap-1.5 text-xs font-bold"
+                title="Alterar minha senha"
+              >
+                <KeyRound className="w-4 h-4" />
+                Senha
+              </button>
               <button onClick={handleLogout} className="p-2.5 bg-white/15 hover:bg-white/25 rounded-xl" title="Sair">
                 <LogOut className="w-4 h-4" />
               </button>
@@ -256,6 +266,8 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
           </div>
         )}
       </div>
+
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
 
       {selected && (
         <MemberTaskModal
