@@ -28,6 +28,16 @@ export interface TaskAttachment {
   size?: number;
 }
 
+// Referência a uma pasta ou arquivo do Meu Drive presa a uma tarefa.
+// Guarda o token de compartilhamento: é ele que permite ao membro da equipe abrir o conteúdo
+// sem ter acesso ao Drive do gestor.
+export interface DriveLink {
+  kind: 'folder' | 'file';
+  id: string;
+  name: string;
+  token: string;
+}
+
 export interface ChecklistItem {
   id: string;
   text: string;
@@ -63,6 +73,7 @@ export interface Task {
   completedAt?: string;
   deletedAt?: string;
   attachments: TaskAttachment[];
+  driveLinks?: DriveLink[];
   // Equipe: responsável (id do usuário do membro; null limpa a delegação), quem concluiu e retorno do membro
   assignedTo?: string | null;
   completedBy?: string;

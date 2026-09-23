@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Calendar, Flag, FolderKanban, Tag, Sparkles, X, AlertCircle, Repeat,
-  CheckSquare, Square, Plus, Paperclip, FileText, Users,
+  CheckSquare, Square, Plus, Paperclip, FileText, Users, HardDrive,
 } from 'lucide-react';
-import { Task, Urgency, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment } from '../types';
+import { Task, Urgency, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment, DriveLink } from '../types';
 import { URGENCY_CONFIG, RECURRENCE_LABELS, todayISO, loadCustomStatuses, buildAllStatuses } from '../constants';
 import { uploadAttachment } from '../lib/storage';
 import { useTeam } from './TeamContext';
+import DriveLinkChips from './DriveLinkChips';
+import DrivePickerModal from './DrivePickerModal';
 
 interface QuickAddProps {
   categories: Category[];
@@ -44,6 +46,8 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   const [newChecklistText, setNewChecklistText] = useState('');
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploadError, setUploadError] = useState('');
+  const [driveLinks, setDriveLinks] = useState<DriveLink[]>([]);
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,6 +164,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
       attachments,
       checklist: finalChecklist,
       recurrence,
+      driveLinks,
       assignedTo: assignedTo || undefined,
       isCompleted: false,
       position: 0,
@@ -479,6 +484,32 @@ const QuickAdd: React.FC<QuickAddProps> = ({
             </div>
           </div>
 
+          {/* Do Meu Drive */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                <HardDrive className="w-3 h-3" /> Do Meu Drive
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowDrivePicker(true)}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center"
+              >
+                <Plus className="w-3 h-3 mr-0.5" /> Anexar pasta ou arquivo
+              </button>
+            </div>
+            {driveLinks.length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic">
+                Anexe uma pasta do Drive e quem receber a tarefa abre tudo que está nela.
+              </p>
+            ) : (
+              <DriveLinkChips
+                links={driveLinks}
+                onRemove={(l) => setDriveLinks(prev => prev.filter(x => !(x.id === l.id && x.kind === l.kind)))}
+              />
+            )}
+          </div>
+
           <button
             onClick={handleSubmit}
             disabled={!title.trim()}
@@ -488,6 +519,17 @@ const QuickAdd: React.FC<QuickAddProps> = ({
           </button>
         </div>
       </div>
+
+      {showDrivePicker && (
+        <DrivePickerModal
+          selected={driveLinks}
+          onClose={() => setShowDrivePicker(false)}
+          onPick={(link) => {
+            setDriveLinks(prev => (prev.some(x => x.id === link.id && x.kind === link.kind) ? prev : [...prev, link]));
+            setShowDrivePicker(false);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -16,6 +16,21 @@ Seu drive dentro do Planner: pastas, subpastas e arquivos. Você compartilha **a
 
 ---
 
+## Anexar Drive numa tarefa
+
+Dentro de uma tarefa (tanto no **Adicionar rápido** quanto na edição) existe a seção **Do Meu Drive** → *Anexar pasta ou arquivo*. Escolha a pasta ou o arquivo e ele passa a aparecer na tarefa.
+
+Quando você delega essa tarefa para alguém da equipe, a pessoa vê o mesmo material em **Material do Drive** e abre pelo link público — ela não precisa de acesso ao seu Drive.
+
+**Prefira anexar a pasta, não o arquivo.** O que você colocar na pasta depois aparece sozinho para quem já recebeu a tarefa; anexando um arquivo, você teria que anexar cada novo arquivo na mão.
+
+Duas coisas para ter em mente:
+
+- **A validade continua valendo.** Se a pasta anexada vencer, o link da tarefa para de abrir. Para material que a equipe vai consultar por muito tempo, dê um prazo longo ou deixe sem validade.
+- **Só você mexe nisso.** O membro abre e baixa, mas não consegue tirar nem trocar o que está anexado — o banco bloqueia essa coluna para ele.
+
+---
+
 ## Para automação (Claude, n8n, scripts)
 
 Por trás da página existe uma API que devolve tudo em JSON. Basta trocar o endereço do site pelo da função, usando o mesmo código do link:
@@ -33,6 +48,8 @@ Resposta: nome da pasta, validade e, para cada arquivo, nome, tamanho, tipo, sub
 ### 1. Rodar a migração
 
 No **SQL Editor** do Supabase, rode o conteúdo de `migration-v7-drive.sql`. Cria as tabelas, o bucket `drive` (privado) e as regras de acesso. Pode rodar mais de uma vez.
+
+Em seguida rode `migration-v8-tarefa-drive.sql`, que é o que permite anexar pasta/arquivo numa tarefa. Também pode rodar mais de uma vez.
 
 ### 2. Publicar as duas Edge Functions
 

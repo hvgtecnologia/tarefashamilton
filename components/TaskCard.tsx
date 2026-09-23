@@ -1,5 +1,5 @@
 import React from 'react';
-import { Circle, FileText, Image as ImageIcon, Calendar, CheckSquare, AlertCircle, Repeat } from 'lucide-react';
+import { Circle, FileText, Image as ImageIcon, Calendar, CheckSquare, AlertCircle, Repeat, HardDrive } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
 import { URGENCY_CONFIG, getStatusConfig, isOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus, RECURRENCE_SHORT_LABELS } from '../constants';
 import { useTeam, firstName } from './TeamContext';
@@ -166,6 +166,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
               <div className="flex items-center">
                 <ImageIcon className="w-3 h-3 mr-0.5" />
                 <span className="text-[10px]">{task.attachments.length}</span>
+              </div>
+            )}
+            {task.driveLinks && task.driveLinks.length > 0 && (
+              <div className="flex items-center text-blue-500" title="Tem material do Meu Drive">
+                <HardDrive className="w-3 h-3 mr-0.5" />
+                <span className="text-[10px]">{task.driveLinks.length}</span>
               </div>
             )}
           </div>

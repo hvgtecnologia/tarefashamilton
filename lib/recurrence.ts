@@ -57,5 +57,6 @@ export function buildRecurringClone(task: Task): Omit<Task, 'id' | 'createdAt' |
     completedAt: undefined,
     deletedAt: undefined,
     attachments: task.attachments || [],
+    driveLinks: task.driveLinks || [],
   };
 }

@@ -6,6 +6,7 @@ import {
 import { Task, Category, Project, TaskAttachment, ChecklistItem, TaskStatus } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, formatPrettyDate, isOverdue } from '../constants';
 import { uploadAttachment } from '../lib/storage';
+import DriveLinkChips from './DriveLinkChips';
 
 interface MemberTaskModalProps {
   task: Task;
@@ -157,6 +158,13 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
               <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1.5">Instruções</h4>
               <p className="text-sm text-slate-700 whitespace-pre-wrap">{task.notes}</p>
+            </div>
+          )}
+
+          {task.driveLinks && task.driveLinks.length > 0 && (
+            <div>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Material do Drive</h4>
+              <DriveLinkChips links={task.driveLinks} />
             </div>
           )}
 

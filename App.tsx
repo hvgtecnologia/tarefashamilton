@@ -275,6 +275,7 @@ const App: React.FC = () => {
         checklist: data.checklist || [],
         recurrence: data.recurrence || 'none',
         attachments: data.attachments || [],
+        driveLinks: data.driveLinks || [],
         assignedTo: data.assignedTo || undefined,
         isCompleted: false,
       });

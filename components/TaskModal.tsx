@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Trash2, FileText, Plus, Calendar, Save, Edit3, Eye, Paperclip,
-  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle
+  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle, HardDrive
 } from 'lucide-react';
-import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence } from '../types';
+import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence, DriveLink } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
 import { uploadAttachment } from '../lib/storage';
 import { useTeam } from './TeamContext';
+import DriveLinkChips from './DriveLinkChips';
+import DrivePickerModal from './DrivePickerModal';
 import { hasWhatsapp, whatsappLink, newTaskMessage } from '../lib/team';
 
 interface TaskModalProps {
@@ -42,6 +44,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const { members, findMember } = useTeam();
   const [assignedTo, setAssignedTo] = useState<string>(task?.assignedTo || '');
   const [uploadError, setUploadError] = useState('');
+  const [driveLinks, setDriveLinks] = useState<DriveLink[]>(task?.driveLinks || []);
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
   const [newChecklistText, setNewChecklistText] = useState('');
   const [workNotes, setWorkNotes] = useState('');
 
@@ -81,6 +85,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
       attachments,
       checklist: finalChecklist,
       recurrence,
+      driveLinks,
       ...((task?.assignedTo || '') !== assignedTo ? { assignedTo: assignedTo || null } : {}),
     });
   };
@@ -127,6 +132,17 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const removeChecklistItem = (id: string) => {
     setChecklist(prev => prev.filter(c => c.id !== id));
   };
+
+  const drivePicker = showDrivePicker ? (
+    <DrivePickerModal
+      selected={driveLinks}
+      onClose={() => setShowDrivePicker(false)}
+      onPick={(link) => {
+        setDriveLinks(prev => (prev.some(x => x.id === link.id && x.kind === link.kind) ? prev : [...prev, link]));
+        setShowDrivePicker(false);
+      }}
+    />
+  ) : null;
 
   if (viewMode === 'edit') {
     return (
@@ -268,6 +284,32 @@ const TaskModal: React.FC<TaskModalProps> = ({
                 )}
               </div>
             )}
+
+            {/* Do Meu Drive */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <HardDrive className="w-3 h-3" />
+                  Do Meu Drive
+                </h4>
+                <button
+                  onClick={() => setShowDrivePicker(true)}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center"
+                >
+                  <Plus className="w-3 h-3 mr-1" /> Anexar pasta ou arquivo
+                </button>
+              </div>
+              {driveLinks.length === 0 ? (
+                <p className="text-[11px] text-slate-400 italic">
+                  Anexe uma pasta do Drive e quem receber a tarefa abre tudo que está nela.
+                </p>
+              ) : (
+                <DriveLinkChips
+                  links={driveLinks}
+                  onRemove={(l) => setDriveLinks(prev => prev.filter(x => !(x.id === l.id && x.kind === l.kind)))}
+                />
+              )}
+            </div>
 
             {/* Anexos */}
             <div>
@@ -557,6 +599,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           </div>
         </div>
+        {drivePicker}
       </div>
     );
   }
@@ -597,6 +640,16 @@ const TaskModal: React.FC<TaskModalProps> = ({
             {description && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <p className="text-sm text-slate-700">{description}</p>
+              </div>
+            )}
+
+            {driveLinks.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-blue-500" />
+                  Material do Drive
+                </h3>
+                <DriveLinkChips links={driveLinks} />
               </div>
             )}
 

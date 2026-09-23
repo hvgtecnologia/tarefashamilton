@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
-import { Task, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment } from '../types';
+import { Task, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment, DriveLink } from '../types';
 import { ATTACHMENTS_BUCKET } from './retention';
 
 const STORAGE_KEY = 'planner-hamilton-tasks';
@@ -127,6 +127,7 @@ const rowToTask = (task: any): Task => ({
     completedAt: task.completed_at,
     deletedAt: task.deleted_at,
     attachments: task.attachments || [],
+    driveLinks: Array.isArray(task.drive_links) ? task.drive_links : [],
     assignedTo: task.assigned_to || undefined,
     completedBy: task.completed_by || undefined,
     completedByName: task.completed_by_name || undefined,
@@ -203,6 +204,8 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
         };
         // Só envia quando há responsável: sem a migração V5 aplicada, tarefas normais continuam funcionando
         if (task.assignedTo) payload.assigned_to = task.assignedTo;
+        // Idem para a V8: só manda a coluna quando realmente há algo do Drive anexado
+        if (task.driveLinks && task.driveLinks.length > 0) payload.drive_links = task.driveLinks;
 
         let { data, error } = await supabase
             .from('tasks')
@@ -288,6 +291,7 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo; // null limpa a delegação
         if (updates.completionSeen !== undefined) dbUpdates.completion_seen = updates.completionSeen;
         if (updates.memberNotes !== undefined) dbUpdates.member_notes = updates.memberNotes;
+        if (updates.driveLinks !== undefined) dbUpdates.drive_links = updates.driveLinks;
         if (updates.nextSpawned !== undefined) dbUpdates.next_spawned = updates.nextSpawned;
 
         let { data, error } = await supabase
@@ -298,12 +302,13 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
             .single();
 
         let fellBackToMeta = false;
-        if (error && /status|checklist|recurrence|due_date|scheduled_time/i.test(error.message || '')) {
+        if (error && /status|checklist|recurrence|due_date|scheduled_time|drive_links/i.test(error.message || '')) {
             delete dbUpdates.status;
             delete dbUpdates.checklist;
             delete dbUpdates.recurrence;
             delete dbUpdates.due_date;
             delete dbUpdates.scheduled_time;
+            delete dbUpdates.drive_links;
             const retry = await supabase.from('tasks').update(dbUpdates).eq('id', id).select().single();
             data = retry.data;
             error = retry.error;
