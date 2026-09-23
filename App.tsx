@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
 import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember } from './types';
@@ -26,7 +26,7 @@ import {
   deleteTask as deleteTaskFromStorage,
   getCategories, addCategory as addCategoryToStorage, deleteCategory as deleteCategoryFromStorage,
   getProjects, addProject as addProjectToStorage, updateProject as updateProjectToStorage,
-  deleteProject as deleteProjectFromStorage, getCurrentUserId, deleteAttachmentFiles
+  deleteProject as deleteProjectFromStorage, getCurrentUserId, deleteAttachmentFiles, getTasksUpdatedSince
 } from './lib/storage';
 import { getSession, onAuthStateChange } from './lib/supabase';
 
@@ -168,6 +168,7 @@ const App: React.FC = () => {
 
         const visibleTasks = fixed.filter(t => !t.deletedAt);
         const trashedTasks = fixed.filter(t => t.deletedAt);
+        lastSyncRef.current = fixed.reduce((max, t) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max), new Date(0).toISOString());
         setTasks(visibleTasks);
         setDeletedTasks(trashedTasks);
         purgeExpiredCompleted(visibleTasks, trashedTasks);
@@ -179,8 +180,33 @@ const App: React.FC = () => {
     loadData();
   }, [isAuthenticated]);
 
+  // Marca d'água da última sincronização: o refresh por foco só traz o que mudou depois dela
+  const lastSyncRef = useRef<string>(new Date(0).toISOString());
+
+  const applyTaskUpdates = useCallback((updates: Task[]) => {
+    if (updates.length === 0) return;
+    const byId = new Map(updates.map(t => [t.id, t]));
+    const newest = updates.reduce((max, t) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max), lastSyncRef.current);
+    lastSyncRef.current = newest;
+
+    setTasks(prev => {
+      const merged = prev.map(t => byId.get(t.id) ?? t);
+      const known = new Set(prev.map(t => t.id));
+      const added = updates.filter(t => !known.has(t.id));
+      return [...merged, ...added].filter(t => !t.deletedAt);
+    });
+    setDeletedTasks(prev => {
+      const merged = prev.map(t => byId.get(t.id) ?? t);
+      const known = new Set(prev.map(t => t.id));
+      const added = updates.filter(t => !known.has(t.id));
+      return [...merged, ...added].filter(t => !!t.deletedAt);
+    });
+  }, []);
+
+  // Botão "Atualizar": leitura completa
   const refreshTasks = useCallback(async () => {
     const fresh = await getTasks();
+    lastSyncRef.current = fresh.reduce((max, t) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max), new Date(0).toISOString());
     setTasks(fresh.filter(t => !t.deletedAt));
     setDeletedTasks(fresh.filter(t => t.deletedAt));
   }, []);
@@ -189,10 +215,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (teamRole !== 'master' || teamMembers.length === 0) return;
     let last = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     const onFocus = () => {
       if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
       last = Date.now();
-      refreshTasks().catch(e => console.error('Erro ao atualizar tarefas:', e));
+      getTasksUpdatedSince(lastSyncRef.current)
+        .then(applyTaskUpdates)
+        .catch(e => console.error('Erro ao atualizar tarefas:', e));
     };
     document.addEventListener('visibilitychange', onFocus);
     window.addEventListener('focus', onFocus);
@@ -200,7 +229,7 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
     };
-  }, [teamRole, teamMembers.length, refreshTasks]);
+  }, [teamRole, teamMembers.length, applyTaskUpdates]);
 
   // Atalho Cmd+K / Ctrl+K
   useEffect(() => {

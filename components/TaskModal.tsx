@@ -41,6 +41,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [recurrence, setRecurrence] = useState<Recurrence>(task?.recurrence || 'none');
   const { members, findMember } = useTeam();
   const [assignedTo, setAssignedTo] = useState<string>(task?.assignedTo || '');
+  const [uploadError, setUploadError] = useState('');
   const [newChecklistText, setNewChecklistText] = useState('');
   const [workNotes, setWorkNotes] = useState('');
 
@@ -93,12 +94,14 @@ const TaskModal: React.FC<TaskModalProps> = ({
       if (f) files.push(f);
     }
     e.target.value = '';
+    setUploadError('');
     for (const file of files) {
       try {
         const attachment = await uploadAttachment(file);
         setAttachments(prev => [...prev, attachment]);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro ao anexar arquivo:', err);
+        setUploadError(err?.message || `Não foi possível anexar "${file.name}".`);
       }
     }
   };
@@ -286,6 +289,9 @@ const TaskModal: React.FC<TaskModalProps> = ({
                 />
               </div>
 
+          {uploadError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-lg text-xs">{uploadError}</div>
+          )}
               <div className="grid grid-cols-4 gap-3">
                 {attachments.map(att => (
                   <div key={att.id} className="relative group">

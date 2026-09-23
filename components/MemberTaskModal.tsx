@@ -56,9 +56,9 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
       try {
         const attachment = await uploadAttachment(file);
         setAttachments(prev => [...prev, attachment]);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro ao anexar arquivo:', err);
-        setError('Não foi possível anexar um dos arquivos.');
+        setError(err?.message || `Não foi possível anexar "${file.name}".`);
       }
     }
     setUploading(false);

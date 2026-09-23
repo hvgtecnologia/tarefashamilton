@@ -66,31 +66,43 @@ export async function deleteAttachmentFiles(paths: string[]): Promise<void> {
     }
 }
 
-// Sobe o arquivo pro Supabase Storage (link leve na tarefa em vez de base64 pesado no banco).
-// Sem Supabase configurado, ou se o upload falhar, cai de volta pro base64 local (comportamento antigo).
+// Sobe o arquivo pro Supabase Storage e guarda só o link na tarefa.
+// NUNCA grava o arquivo dentro do banco: uma versão anterior caía para base64 quando o Storage
+// falhava, e isso inchava a linha em megabytes. Como o app relê a lista inteira, cada atualização
+// passava a carregar esses megabytes e o tráfego estourou a cota. Agora o erro aparece na tela.
 export async function uploadAttachment(file: File): Promise<TaskAttachment> {
     const id = crypto.randomUUID();
     const type: TaskAttachment['type'] = file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'other';
 
-    if (isSupabaseConfigured()) {
-        try {
-            const userId = await getCurrentUserId();
-            if (userId) {
-                const path = `${userId}/${id}-${sanitizeFileName(file.name)}`;
-                const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: file.type });
-                if (!error) {
-                    const { data } = supabase.storage.from(ATTACHMENTS_BUCKET).getPublicUrl(path);
-                    return { id, url: data.publicUrl, name: file.name, type, size: file.size };
-                }
-                console.error('Erro ao subir anexo para o Storage, usando fallback local:', error.message);
-            }
-        } catch (e) {
-            console.error('Erro ao subir anexo para o Storage, usando fallback local:', e);
-        }
+    // Modo local (sem Supabase): não há Storage nem banco, então o arquivo fica no navegador mesmo
+    if (!isSupabaseConfigured()) {
+        return { id, url: await fileToDataUrl(file), name: file.name, type, size: file.size };
     }
 
-    const url = await fileToDataUrl(file);
-    return { id, url, name: file.name, type, size: file.size };
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Sessão expirada. Entre novamente para anexar arquivos.');
+
+    const path = `${userId}/${id}-${sanitizeFileName(file.name)}`;
+    const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { contentType: file.type });
+    if (error) {
+        console.error('Erro ao subir anexo para o Storage:', error.message);
+        throw new Error(`Não foi possível anexar "${file.name}". O arquivo não foi salvo.`);
+    }
+
+    const { data } = supabase.storage.from(ATTACHMENTS_BUCKET).getPublicUrl(path);
+    return { id, url: data.publicUrl, name: file.name, type, size: file.size };
+}
+
+// Busca só o que mudou desde a última leitura (usado ao voltar para a aba).
+// Antes o app relia a lista inteira a cada foco; com uma tarefa pesada isso custava caro.
+export async function getTasksUpdatedSince(since: string): Promise<Task[]> {
+    if (!isSupabaseConfigured()) return [];
+    const { data, error } = await supabase.from('tasks').select('*').gt('updated_at', since);
+    if (error) {
+        console.error('Error fetching task updates:', error);
+        throw error;
+    }
+    return (data || []).map(rowToTask);
 }
 
 // ==================== TASKS ====================
