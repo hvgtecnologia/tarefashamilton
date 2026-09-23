@@ -3,7 +3,7 @@ import { Category, Urgency, Project, View } from '../types';
 import { URGENCY_CONFIG, isOverdue } from '../constants';
 import {
   LayoutDashboard, Sun, BarChart3, Calendar, Columns,
-  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2, Users
+  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2, Users, HardDrive
 } from 'lucide-react';
 import { useTeam } from './TeamContext';
 
@@ -162,6 +162,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 icon={<Share2 className="w-4 h-4 text-blue-600" />}
                 label="Google Agenda"
                 onClick={() => { onOpenCalendarSync(); onClose?.(); }}
+              />
+              <NavBtn
+                icon={<HardDrive className="w-4 h-4" />}
+                label="Meu Drive"
+                active={view === 'drive' && !openProjectId}
+                onClick={() => { setView('drive'); onClose?.(); }}
               />
             </div>
           </div>

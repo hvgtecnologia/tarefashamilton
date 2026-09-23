@@ -14,6 +14,7 @@ import Dashboard from './components/Dashboard';
 import { CalendarView } from './components/CalendarView';
 import { CalendarSyncModal } from './components/CalendarSyncModal';
 import TeamView from './components/TeamView';
+import DriveView from './components/DriveView';
 import TeamMemberModal, { TeamMemberModalMode } from './components/TeamMemberModal';
 import MemberApp from './components/MemberApp';
 import { TeamProvider } from './components/TeamContext';
@@ -811,6 +812,8 @@ const App: React.FC = () => {
               onDayClick={handleDayClick}
               onTaskClick={(task) => openTaskModal(task)}
             />
+          ) : view === 'drive' ? (
+            <DriveView />
           ) : (
             <DragDropContext onDragEnd={onDragEnd}>
               <KanbanBoard

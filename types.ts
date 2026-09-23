@@ -83,7 +83,28 @@ export interface TeamMember {
   createdAt?: string;
 }
 
-export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team';
+export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team' | 'drive';
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  shareToken: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface DriveFile {
+  id: string;
+  folderId: string | null;
+  name: string;
+  storagePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  shareToken: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
 
 export interface AppState {
   tasks: Task[];
