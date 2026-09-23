@@ -9,7 +9,7 @@ Seu drive dentro do Planner: pastas, subpastas e arquivos. Você compartilha **a
 1. No menu lateral, clique em **Meu Drive**.
 2. **Nova pasta** → dê o nome e escolha a validade (padrão: 30 dias).
 3. Entre na pasta e clique em **Enviar arquivos**. Cada arquivo pode ter validade própria, mais curta que a da pasta.
-4. Na linha da pasta, clique em **Link** para copiar. Mande esse link para quem quiser: ele abre uma página com a lista dos arquivos e um botão de baixar em cada um.
+4. Na linha da pasta, clique em **Link** para copiar. O link é do **seu próprio site** (algo como `https://seusite.com/#/s/abc123`), e abre uma página com a lista dos arquivos e um botão de baixar em cada um.
 5. Para mudar um prazo depois, clique no seletor de tempo (o relógio) da pasta ou do arquivo.
 
 **A validade manda em cascata.** Se a pasta vence, nada dentro dela abre, mesmo que um arquivo tenha prazo maior. O mesmo vale para subpastas.
@@ -18,10 +18,10 @@ Seu drive dentro do Planner: pastas, subpastas e arquivos. Você compartilha **a
 
 ## Para automação (Claude, n8n, scripts)
 
-O mesmo link aceita `?format=json` e devolve a lista pronta para ser consumida por um robô:
+Por trás da página existe uma API que devolve tudo em JSON. Basta trocar o endereço do site pelo da função, usando o mesmo código do link:
 
 ```
-https://<seu-project-ref>.functions.supabase.co/drive-share?t=<token>&format=json
+https://<seu-project-ref>.functions.supabase.co/drive-share?t=<token>
 ```
 
 Resposta: nome da pasta, validade e, para cada arquivo, nome, tamanho, tipo, subpasta e uma URL de download temporária (1 hora).
@@ -41,7 +41,7 @@ supabase functions deploy drive-share --no-verify-jwt
 supabase functions deploy drive-purge --no-verify-jwt
 ```
 
-- **drive-share**: a página pública. Confere a validade e emite um link de download assinado, válido por 1 hora.
+- **drive-share**: a API do compartilhamento. Confere a validade e emite os links de download assinados (1 hora). A página em si é desenhada pelo app, na rota `#/s/<token>`.
 - **drive-purge**: apaga de verdade (Storage + banco) pastas e arquivos vencidos.
 
 `--no-verify-jwt` é obrigatório nas duas: quem abre o link não tem login.
@@ -59,9 +59,11 @@ Se preferir rodar na mão: `curl -X POST https://<seu-project-ref>.functions.sup
 
 ---
 
-## Por que o bucket é privado
+## Duas decisões de arquitetura
 
-Se o bucket fosse público, qualquer um que tivesse guardado a URL crua do arquivo continuaria baixando depois do vencimento, até a limpeza rodar. Com o bucket privado, a única porta é a página `drive-share`, que confere a validade **antes** de emitir cada link de download. Vencido é vencido na hora; a limpeza só libera o espaço.
+**O bucket é privado.** Se fosse público, quem tivesse guardado o endereço cru do arquivo continuaria baixando depois do vencimento, até a limpeza rodar. Privado, a única porta é a `drive-share`, que confere a validade **antes** de emitir cada link. Vencido é vencido na hora; a limpeza só libera o espaço.
+
+**A página fica no app, não na Edge Function.** O Supabase força `text/plain` em qualquer HTML servido por Edge Function (proteção antiphishing do domínio `*.supabase.co`), então uma página montada lá chega como texto cru no navegador. Além de resolver isso, o link fica no seu domínio, o que passa muito mais confiança para quem recebe.
 
 ---
 

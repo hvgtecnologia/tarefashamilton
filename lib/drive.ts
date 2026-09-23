@@ -43,13 +43,54 @@ export function expiresAtFromHours(hours: number | null): string | null {
     return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
-// URL da página pública (ver supabase/functions/drive-share). Serve tanto para pasta quanto para
-// arquivo: o token diz o que é. Não é a URL crua do Storage (o bucket é privado) — a página
-// confere a validade e só então emite um link de download assinado, de curta duração.
+export interface SharedDriveFileEntry {
+    name: string;
+    size_bytes: number;
+    mime_type: string;
+    subfolder: string;
+    url: string;
+}
+
+export interface SharedDrivePayload {
+    folder?: string;
+    file?: string;
+    size_bytes?: number;
+    mime_type?: string;
+    url?: string;
+    inline_url?: string;
+    expires_at?: string | null;
+    files?: SharedDriveFileEntry[];
+}
+
+// Rota pública dentro do próprio app (ex: https://seuapp.com/#/s/<token>).
+// Fica no domínio do app de propósito: o Supabase força text/plain em HTML servido por Edge
+// Function, então uma página hospedada lá não renderiza. Além disso, um link no seu domínio passa
+// muito mais confiança para quem recebe do que um endereço supabase.co.
+export const SHARE_ROUTE_PREFIX = '#/s/';
+
 export function getShareUrl(shareToken: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/${SHARE_ROUTE_PREFIX}${shareToken}`;
+}
+
+// Extrai o token de um endereço como ".../#/s/abc123" (null quando não é um link de compartilhamento)
+export function parseShareToken(hash: string): string | null {
+    const i = hash.indexOf(SHARE_ROUTE_PREFIX);
+    if (i === -1) return null;
+    const token = hash.slice(i + SHARE_ROUTE_PREFIX.length).split(/[?&/]/)[0].trim();
+    return /^[a-zA-Z0-9_-]{8,128}$/.test(token) ? token : null;
+}
+
+// Quem serve o conteúdo é a Edge Function: ela confere a validade e assina os downloads.
+export async function fetchSharedDrive(token: string): Promise<SharedDrivePayload> {
     const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
     const projectRef = supabaseUrl.replace('https://', '').split('.')[0];
-    return `https://${projectRef}.functions.supabase.co/drive-share?t=${shareToken}`;
+    const res = await fetch(`https://${projectRef}.functions.supabase.co/drive-share?t=${encodeURIComponent(token)}&format=json`);
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload || payload.error) {
+        throw new Error(payload?.error || 'Esse link expirou ou não existe mais.');
+    }
+    return payload as SharedDrivePayload;
 }
 
 // Link temporário para o DONO abrir/baixar o próprio arquivo dentro do app (bucket é privado)
