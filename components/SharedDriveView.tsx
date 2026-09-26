@@ -1,16 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { HardDrive, Download, Folder, FileText, Image as ImageIcon, Video as VideoIcon, Clock, Loader2, Link2Off } from 'lucide-react';
-import { fetchSharedDrive, formatBytes, SharedDrivePayload } from '../lib/drive';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  HardDrive, Download, Folder, FileText, Image as ImageIcon, Video as VideoIcon,
+  Clock, Loader2, Link2Off, Play, AlertTriangle, X,
+} from 'lucide-react';
+import { fetchSharedDrive, formatBytes, refreshDelayMs, SharedDrivePayload, SharedDriveFileEntry } from '../lib/drive';
 
 interface SharedDriveViewProps {
   token: string;
 }
+
+const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm w-full max-w-xl p-7">{children}</div>
+  </div>
+);
 
 function fileIcon(mime: string) {
   if (mime?.startsWith('image/')) return <ImageIcon className="w-4 h-4" />;
   if (mime?.startsWith('video/')) return <VideoIcon className="w-4 h-4" />;
   return <FileText className="w-4 h-4" />;
 }
+
+const isVideo = (mime?: string | null) => !!mime && mime.startsWith('video/');
+const isAudio = (mime?: string | null) => !!mime && mime.startsWith('audio/');
+const isImage = (mime?: string | null) => !!mime && mime.startsWith('image/');
 
 function expiryText(expiresAt: string | null | undefined): string {
   if (!expiresAt) return '';
@@ -30,21 +43,44 @@ const SharedDriveView: React.FC<SharedDriveViewProps> = ({ token }) => {
   const [data, setData] = useState<SharedDrivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const timerRef = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    let alive = true;
-    fetchSharedDrive(token)
-      .then((payload) => { if (alive) setData(payload); })
-      .catch((e: Error) => { if (alive) setError(e.message); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+  const load = useCallback(async () => {
+    const payload = await fetchSharedDrive(token);
+    setData(payload);
+    return payload;
   }, [token]);
 
-  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm w-full max-w-xl p-7">{children}</div>
-    </div>
-  );
+  // Os links de download são assinados e têm hora para morrer. Quem recebe costuma deixar a página
+  // aberta e só clicar depois — e aí o link já tinha vencido, o que parecia "link quebrado".
+  // Então renovamos sozinhos antes de vencer, enquanto a página estiver aberta.
+  useEffect(() => {
+    let alive = true;
+
+    const schedule = (ttlSeconds?: number) => {
+      timerRef.current = window.setTimeout(async () => {
+        if (!alive) return;
+        try {
+          const fresh = await load();
+          if (alive) schedule(fresh.ttl_seconds);
+        } catch {
+          // Renovação falhou (rede caiu, ou a pasta venceu de verdade). Os links atuais continuam
+          // valendo até a hora deles; não vale derrubar a página que já está na tela.
+          if (alive) schedule(600);
+        }
+      }, refreshDelayMs(ttlSeconds));
+    };
+
+    load()
+      .then((payload) => { if (alive) schedule(payload.ttl_seconds); })
+      .catch((e: Error) => { if (alive) setError(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+
+    return () => {
+      alive = false;
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [load]);
 
   if (loading) {
     return (
@@ -68,17 +104,32 @@ const SharedDriveView: React.FC<SharedDriveViewProps> = ({ token }) => {
     );
   }
 
+  return <SharedDriveBody data={data} />;
+};
+
+// Corpo da página, separado da busca de propósito: assim dá para testar o que aparece na tela
+// sem depender de rede nem de efeito rodando.
+export const SharedDriveBody: React.FC<{ data: SharedDrivePayload }> = ({ data }) => {
+  const [playing, setPlaying] = useState<SharedDriveFileEntry | null>(null);
+
   // ---------- Arquivo único ----------
   if (data.file) {
-    const isImage = data.mime_type?.startsWith('image/');
-    const isVideo = data.mime_type?.startsWith('video/');
     const previewUrl = data.inline_url || data.url;
     return (
       <Shell>
         <div className="text-center">
-          {isImage && <img src={previewUrl} alt={data.file} className="max-w-full rounded-xl mb-5 mx-auto" />}
-          {isVideo && <video src={previewUrl} controls className="max-w-full rounded-xl mb-5 mx-auto" />}
-          {!isImage && !isVideo && <FileText className="w-14 h-14 text-slate-300 mx-auto mb-4" />}
+          {isImage(data.mime_type) && (
+            <img src={previewUrl} alt={data.file} className="max-w-full rounded-xl mb-5 mx-auto" />
+          )}
+          {isVideo(data.mime_type) && (
+            // preload="none" de propósito: tráfego do Supabase é cota, e abrir a página não deveria
+            // baixar o vídeo inteiro de quem só queria o arquivo.
+            <video src={previewUrl} controls preload="none" playsInline className="w-full rounded-xl mb-5 bg-black" />
+          )}
+          {isAudio(data.mime_type) && <audio src={previewUrl} controls preload="none" className="w-full mb-5" />}
+          {!isImage(data.mime_type) && !isVideo(data.mime_type) && !isAudio(data.mime_type) && (
+            <FileText className="w-14 h-14 text-slate-300 mx-auto mb-4" />
+          )}
 
           <h1 className="text-lg font-bold text-slate-800 break-words">{data.file}</h1>
           <p className="text-sm text-slate-500 mt-1 mb-5">{formatBytes(data.size_bytes || 0)}</p>
@@ -100,7 +151,7 @@ const SharedDriveView: React.FC<SharedDriveViewProps> = ({ token }) => {
   const files = data.files || [];
   const totalBytes = files.reduce((sum, f) => sum + (f.size_bytes || 0), 0);
 
-  const groups = new Map<string, typeof files>();
+  const groups = new Map<string, SharedDriveFileEntry[]>();
   for (const f of files) {
     const key = f.subfolder || '';
     if (!groups.has(key)) groups.set(key, []);
@@ -132,10 +183,28 @@ const SharedDriveView: React.FC<SharedDriveViewProps> = ({ token }) => {
                   <p className="text-sm font-semibold text-slate-700 break-words">{f.name}</p>
                   <p className="text-xs text-slate-400">{formatBytes(f.size_bytes || 0)}</p>
                 </div>
-                <a href={f.url} className="text-sm font-bold text-blue-600 hover:text-blue-700 whitespace-nowrap flex items-center gap-1">
-                  <Download className="w-3.5 h-3.5" />
-                  Baixar
-                </a>
+
+                {f.inline_url && (isVideo(f.mime_type) || isAudio(f.mime_type)) && (
+                  <button
+                    onClick={() => setPlaying(f)}
+                    className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-1"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Assistir
+                  </button>
+                )}
+
+                {f.url ? (
+                  <a href={f.url} className="text-sm font-bold text-blue-600 hover:text-blue-700 whitespace-nowrap flex items-center gap-1">
+                    <Download className="w-3.5 h-3.5" />
+                    Baixar
+                  </a>
+                ) : (
+                  <span className="text-xs font-bold text-amber-600 whitespace-nowrap flex items-center gap-1" title="O arquivo está na pasta mas não pôde ser aberto agora. Recarregue a página.">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Indisponível
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -153,6 +222,28 @@ const SharedDriveView: React.FC<SharedDriveViewProps> = ({ token }) => {
         <HardDrive className="w-3 h-3" />
         Compartilhado pelo Hamilton Planner
       </div>
+
+      {playing && playing.inline_url && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80" onClick={() => setPlaying(null)} />
+          <div className="relative w-full max-w-3xl">
+            <div className="flex items-center gap-3 mb-2">
+              <p className="text-sm font-semibold text-white truncate flex-1">{playing.name}</p>
+              <a href={playing.url || undefined} className="text-xs font-bold text-white/80 hover:text-white flex items-center gap-1 flex-shrink-0">
+                <Download className="w-3.5 h-3.5" /> Baixar
+              </a>
+              <button onClick={() => setPlaying(null)} className="text-white/70 hover:text-white flex-shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {isAudio(playing.mime_type) ? (
+              <audio src={playing.inline_url} controls autoPlay className="w-full" />
+            ) : (
+              <video src={playing.inline_url} controls autoPlay playsInline className="w-full rounded-xl bg-black max-h-[75vh]" />
+            )}
+          </div>
+        </div>
+      )}
     </Shell>
   );
 };

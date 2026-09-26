@@ -1,6 +1,6 @@
 // Supabase Edge Function: drive-share
 // API do compartilhamento do Meu Drive. Recebe o token de uma PASTA ou de um ARQUIVO, confere a
-// validade e devolve JSON com links de download assinados (1 hora).
+// validade e devolve JSON com links de download assinados.
 // Deploy: supabase functions deploy drive-share --no-verify-jwt
 //
 // Por que só JSON: o Supabase força "text/plain" em qualquer HTML servido por Edge Function
@@ -13,8 +13,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hora
 const BUCKET = "drive";
+
+// Teto da assinatura. Seis horas em vez de uma: um vídeo grande baixado numa conexão ruim passava
+// da hora e o navegador não conseguia retomar o download, o que aparecia para quem recebeu o link
+// como "link quebrado". Também cobre o caso de deixar a página aberta e só clicar depois.
+const MAX_TTL_SECONDS = 6 * 60 * 60;
+const MIN_TTL_SECONDS = 60;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +33,19 @@ const json = (body: unknown, status = 200) =>
   });
 
 const gone = () => json({ error: "Esse link expirou ou não existe mais." }, 404);
+
+// A assinatura nunca pode durar mais do que a validade do conteúdo, senão um link assinado
+// sobreviveria ao vencimento — e a promessa do Drive é que vencido é vencido na hora.
+function ttlFor(expiresAt: string | null | undefined): number {
+  if (!expiresAt) return MAX_TTL_SECONDS;
+  const remaining = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
+  return Math.max(MIN_TTL_SECONDS, Math.min(MAX_TTL_SECONDS, remaining));
+}
+
+// Só o que o navegador toca nativamente ganha link de visualização. Nos outros o botão de baixar
+// já resolve, e assinar duas vezes seria round-trip jogado fora.
+const isPlayable = (mime: string | null | undefined) =>
+  !!mime && (mime.startsWith("video/") || mime.startsWith("audio/") || mime.startsWith("image/") || mime === "application/pdf");
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -44,10 +62,10 @@ serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
-  const sign = async (path: string, downloadName?: string): Promise<string | null> => {
+  const sign = async (path: string, ttl: number, downloadName?: string): Promise<string | null> => {
     const { data, error } = await admin.storage
       .from(BUCKET)
-      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, downloadName ? { download: downloadName } : undefined);
+      .createSignedUrl(path, ttl, downloadName ? { download: downloadName } : undefined);
     if (error) {
       console.error("Erro ao assinar", path, error.message);
       return null;
@@ -60,20 +78,32 @@ serve(async (req) => {
     const { data: folderRows } = await admin.rpc("get_shared_drive_folder", { p_token: token });
 
     if (folderRows && folderRows.length > 0) {
-      const entries = await Promise.all(
-        folderRows.map(async (r: any) => ({
-          name: r.file_name as string,
-          size_bytes: Number(r.size_bytes) || 0,
-          mime_type: r.mime_type as string,
-          subfolder: (r.folder_path as string) || "",
-          url: await sign(r.storage_path, r.file_name),
-        })),
+      const folderExpiresAt = folderRows[0].folder_expires_at as string | null;
+      const ttl = ttlFor(folderExpiresAt);
+
+      const files = await Promise.all(
+        folderRows.map(async (r: any) => {
+          const downloadUrl = await sign(r.storage_path, ttl, r.file_name);
+          // Sem "download" forçado: é o que permite assistir o vídeo na própria página.
+          const inlineUrl = isPlayable(r.mime_type) ? await sign(r.storage_path, ttl) : null;
+          return {
+            name: r.file_name as string,
+            size_bytes: Number(r.size_bytes) || 0,
+            mime_type: r.mime_type as string,
+            subfolder: (r.folder_path as string) || "",
+            url: downloadUrl,
+            inline_url: inlineUrl,
+          };
+        }),
       );
 
+      // Antes um arquivo que falhasse ao assinar era removido da lista em silêncio, então a pasta
+      // aparecia incompleta sem ninguém saber por quê. Agora ele fica visível como indisponível.
       return json({
         folder: folderRows[0].folder_name,
-        expires_at: folderRows[0].folder_expires_at,
-        files: entries.filter((e) => e.url),
+        expires_at: folderExpiresAt,
+        ttl_seconds: ttl,
+        files,
       });
     }
 
@@ -81,9 +111,9 @@ serve(async (req) => {
     const { data: fileRow } = await admin.rpc("get_shared_drive_file", { p_token: token }).maybeSingle();
 
     if (fileRow) {
-      const downloadUrl = await sign(fileRow.storage_path, fileRow.name);
-      // Sem "download" forçado: serve para o app mostrar a prévia de imagem/vídeo
-      const inlineUrl = (await sign(fileRow.storage_path)) ?? downloadUrl;
+      const ttl = ttlFor(fileRow.expires_at);
+      const downloadUrl = await sign(fileRow.storage_path, ttl, fileRow.name);
+      const inlineUrl = (isPlayable(fileRow.mime_type) ? await sign(fileRow.storage_path, ttl) : null) ?? downloadUrl;
       if (!downloadUrl) return gone();
 
       return json({
@@ -91,6 +121,7 @@ serve(async (req) => {
         size_bytes: Number(fileRow.size_bytes) || 0,
         mime_type: fileRow.mime_type,
         expires_at: fileRow.expires_at,
+        ttl_seconds: ttl,
         url: downloadUrl,
         inline_url: inlineUrl,
       });
@@ -106,7 +137,12 @@ serve(async (req) => {
       .maybeSingle();
 
     if (emptyFolder && (!emptyFolder.expires_at || new Date(emptyFolder.expires_at) > new Date())) {
-      return json({ folder: emptyFolder.name, expires_at: emptyFolder.expires_at, files: [] });
+      return json({
+        folder: emptyFolder.name,
+        expires_at: emptyFolder.expires_at,
+        ttl_seconds: ttlFor(emptyFolder.expires_at),
+        files: [],
+      });
     }
 
     return gone();

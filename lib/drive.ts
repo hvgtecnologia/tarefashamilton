@@ -1,3 +1,4 @@
+import * as tus from 'tus-js-client';
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { DriveFolder, DriveFile } from '../types';
 
@@ -48,7 +49,12 @@ export interface SharedDriveFileEntry {
     size_bytes: number;
     mime_type: string;
     subfolder: string;
-    url: string;
+    // null quando a assinatura falhou. Antes o arquivo era omitido da lista em silêncio e a pasta
+    // parecia incompleta; agora aparece marcado como indisponível.
+    url: string | null;
+    // Link sem download forçado, para assistir/ver na própria página. Só vem para vídeo, áudio,
+    // imagem e PDF.
+    inline_url?: string | null;
 }
 
 export interface SharedDrivePayload {
@@ -59,7 +65,18 @@ export interface SharedDrivePayload {
     url?: string;
     inline_url?: string;
     expires_at?: string | null;
+    // Quanto tempo os links assinados deste payload valem. A página usa isso para buscar links
+    // novos antes de vencerem, em vez de mandar o visitante num link morto.
+    ttl_seconds?: number;
     files?: SharedDriveFileEntry[];
+}
+
+// Quando buscar links novos. Os links assinados morrem na hora marcada, e quem recebe o link
+// costuma deixar a página aberta e clicar bem depois — então renovamos a 80% do prazo, com um
+// piso de 1 minuto para nunca virar um laço apertado.
+export function refreshDelayMs(ttlSeconds?: number | null): number {
+    const ttl = ttlSeconds && ttlSeconds > 120 ? ttlSeconds : 600;
+    return Math.max(60_000, Math.round(ttl * 0.8 * 1000));
 }
 
 // Rota pública dentro do próprio app (ex: https://seuapp.com/#/s/<token>).
@@ -199,17 +216,87 @@ export async function deleteFolder(id: string): Promise<void> {
     if (error) throw new Error(error.message);
 }
 
-export async function uploadDriveFile(file: File, folderId: string | null, expiryHours: number | null): Promise<DriveFile> {
+// Acima disto o envio vai por upload resumível (protocolo TUS), que sobe em pedaços de 6 MB e
+// retoma de onde parou se a conexão oscilar. Um vídeo grande num POST único morria no meio e
+// recomeçava do zero — na prática, não subia nunca.
+const RESUMABLE_THRESHOLD_BYTES = 6 * 1024 * 1024;
+// O Supabase exige exatamente 6 MB por pedaço no endpoint resumável.
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+
+export type UploadProgress = (sentBytes: number, totalBytes: number) => void;
+
+// O Storage recusa com 413 quando o arquivo passa do limite do projeto (o padrão é 50 MB e fica no
+// painel, não no código). A mensagem crua não diz nada a quem está enviando, então traduzimos.
+function friendlyUploadError(file: File, raw: string): Error {
+    if (/exceeded the maximum allowed size|payload too large|413/i.test(raw)) {
+        return new Error(
+            `"${file.name}" (${formatBytes(file.size)}) passou do limite de tamanho do seu Supabase. ` +
+            `Aumente em Storage → Settings → "Upload file size limit" no painel do Supabase e tente de novo.`,
+        );
+    }
+    if (/jwt|token|unauthorized|401/i.test(raw)) {
+        return new Error('Sua sessão expirou durante o envio. Entre novamente e repita.');
+    }
+    return new Error(`Não foi possível enviar "${file.name}": ${raw}`);
+}
+
+// Envio resumível via TUS. Usa o token da sessão porque o bucket é privado e as policies do Storage
+// checam o dono pelo auth.uid().
+async function uploadResumable(file: File, path: string, onProgress?: UploadProgress): Promise<void> {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) throw new Error('Sessão expirada. Entre novamente.');
+
+    const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+
+    await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(file, {
+            endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+            retryDelays: [0, 2000, 5000, 10000, 20000],
+            headers: {
+                authorization: `Bearer ${accessToken}`,
+                'x-upsert': 'true',
+            },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            chunkSize: TUS_CHUNK_SIZE,
+            metadata: {
+                bucketName: DRIVE_BUCKET,
+                objectName: path,
+                contentType: file.type || 'application/octet-stream',
+                cacheControl: '3600',
+            },
+            onProgress: (sent, total) => onProgress?.(sent, total),
+            onError: (err) => reject(friendlyUploadError(file, (err as Error).message || String(err))),
+            onSuccess: () => resolve(),
+        });
+        upload.start();
+    });
+}
+
+export async function uploadDriveFile(
+    file: File,
+    folderId: string | null,
+    expiryHours: number | null,
+    onProgress?: UploadProgress,
+): Promise<DriveFile> {
     if (!isSupabaseConfigured()) throw new Error('Supabase não configurado.');
     const userId = (await getCurrentUser())?.id;
     if (!userId) throw new Error('Sessão expirada. Entre novamente.');
 
     const id = crypto.randomUUID();
     const path = `${userId}/${id}-${sanitizeFileName(file.name)}`;
-    const { error: uploadError } = await supabase.storage
-        .from(DRIVE_BUCKET)
-        .upload(path, file, { contentType: file.type || 'application/octet-stream' });
-    if (uploadError) throw new Error(`Não foi possível enviar "${file.name}": ${uploadError.message}`);
+
+    if (file.size > RESUMABLE_THRESHOLD_BYTES) {
+        await uploadResumable(file, path, onProgress);
+    } else {
+        onProgress?.(0, file.size);
+        const { error: uploadError } = await supabase.storage
+            .from(DRIVE_BUCKET)
+            .upload(path, file, { contentType: file.type || 'application/octet-stream' });
+        if (uploadError) throw friendlyUploadError(file, uploadError.message);
+        onProgress?.(file.size, file.size);
+    }
 
     const { data, error } = await supabase
         .from('drive_files')

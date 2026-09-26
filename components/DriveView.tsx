@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   HardDrive, Folder, FolderPlus, Upload, ChevronRight, Trash2, Link2, Clock,
-  File as FileIcon, Image as ImageIcon, Video as VideoIcon, Check, X, Loader2
+  File as FileIcon, Image as ImageIcon, Video as VideoIcon, Check, X, Loader2, Play
 } from 'lucide-react';
 import { DriveFolder, DriveFile } from '../types';
 import {
@@ -41,6 +41,10 @@ const DriveView: React.FC = () => {
   const [newFolderExpiryHours, setNewFolderExpiryHours] = useState<number | null>(DEFAULT_FOLDER_EXPIRY_HOURS);
   const [usage, setUsage] = useState<{ files: number; bytes: number } | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Vídeo grande sobe em pedaços e demora. Sem isso a tela só dizia "Enviando..." e dava a
+  // impressão de ter travado.
+  const [progress, setProgress] = useState<{ name: string; sent: number; total: number; index: number; count: number } | null>(null);
+  const [preview, setPreview] = useState<{ file: DriveFile; url: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
 
@@ -98,18 +102,29 @@ const DriveView: React.FC = () => {
 
   const handleFilesSelected = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
+    const chosen = Array.from(fileList);
     setUploading(true);
     setError('');
+    let sentCount = 0;
     try {
-      for (const file of Array.from(fileList)) {
-        await uploadDriveFile(file, currentFolderId, pendingExpiryHours);
+      for (let i = 0; i < chosen.length; i++) {
+        const file = chosen[i];
+        setProgress({ name: file.name, sent: 0, total: file.size, index: i + 1, count: chosen.length });
+        await uploadDriveFile(file, currentFolderId, pendingExpiryHours, (sent, total) => {
+          setProgress({ name: file.name, sent, total, index: i + 1, count: chosen.length });
+        });
+        sentCount++;
       }
-      setNotice(fileList.length === 1 ? 'Arquivo enviado.' : `${fileList.length} arquivos enviados.`);
+      setNotice(chosen.length === 1 ? 'Arquivo enviado.' : `${chosen.length} arquivos enviados.`);
       reload(currentFolderId);
     } catch (e) {
       setError((e as Error).message);
+      // Se o terceiro de cinco falhou, os dois primeiros já estão lá: mostrar a lista atualizada
+      // evita a impressão de que nada subiu.
+      if (sentCount > 0) reload(currentFolderId);
     } finally {
       setUploading(false);
+      setProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -137,7 +152,11 @@ const DriveView: React.FC = () => {
 
   const handleOpenFile = async (file: DriveFile) => {
     try {
-      window.open(await getOwnerFileUrl(file), '_blank', 'noopener');
+      const url = await getOwnerFileUrl(file);
+      const playable = /^(video|audio|image)\//.test(file.mimeType || '');
+      // Vídeo e áudio abrem num player aqui dentro; o resto continua abrindo em aba nova.
+      if (playable) setPreview({ file, url });
+      else window.open(url, '_blank', 'noopener');
     } catch (e) {
       setError((e as Error).message);
     }
@@ -235,6 +254,31 @@ const DriveView: React.FC = () => {
         </button>
         <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => handleFilesSelected(e.target.files)} />
       </div>
+
+      {progress && (
+        <div className="mb-4 bg-white border border-slate-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-1.5 gap-3">
+            <p className="text-xs font-medium text-slate-600 truncate">
+              {progress.count > 1 && <span className="text-slate-400">{progress.index}/{progress.count} · </span>}
+              {progress.name}
+            </p>
+            <p className="text-xs font-bold text-slate-500 flex-shrink-0 tabular-nums">
+              {formatBytes(progress.sent)} de {formatBytes(progress.total)}
+            </p>
+          </div>
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 transition-all duration-200"
+              style={{ width: `${progress.total ? Math.min(100, (progress.sent / progress.total) * 100) : 0}%` }}
+            />
+          </div>
+          {progress.total > 6 * 1024 * 1024 && (
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Arquivo grande: sobe em pedaços e retoma de onde parou se a conexão oscilar. Não feche a aba.
+            </p>
+          )}
+        </div>
+      )}
 
       {isAddingFolder && (
         <div className="flex items-center gap-2 mb-4 bg-white border rounded-lg p-2">
@@ -375,6 +419,16 @@ const DriveView: React.FC = () => {
                   )}
                 </div>
 
+                {/^(video|audio)\//.test(file.mimeType || '') && (
+                  <button
+                    onClick={() => handleOpenFile(file)}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg flex-shrink-0"
+                    title="Assistir aqui"
+                  >
+                    <Play className="w-3.5 h-3.5" /> Assistir
+                  </button>
+                )}
+
                 <button
                   onClick={() => handleCopyLink(file.id, file.shareToken)}
                   className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg flex-shrink-0"
@@ -400,6 +454,27 @@ const DriveView: React.FC = () => {
       {notice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg">
           {notice}
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80" onClick={() => setPreview(null)} />
+          <div className="relative w-full max-w-3xl">
+            <div className="flex items-center gap-3 mb-2">
+              <p className="text-sm font-semibold text-white truncate flex-1">{preview.file.name}</p>
+              <button onClick={() => setPreview(null)} className="text-white/70 hover:text-white flex-shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {preview.file.mimeType?.startsWith('audio/') ? (
+              <audio src={preview.url} controls autoPlay className="w-full" />
+            ) : preview.file.mimeType?.startsWith('image/') ? (
+              <img src={preview.url} alt={preview.file.name} className="w-full rounded-xl max-h-[80vh] object-contain" />
+            ) : (
+              <video src={preview.url} controls autoPlay playsInline className="w-full rounded-xl bg-black max-h-[80vh]" />
+            )}
+          </div>
         </div>
       )}
     </div>
