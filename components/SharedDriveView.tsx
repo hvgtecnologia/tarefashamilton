@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   HardDrive, Download, Folder, FileText, Image as ImageIcon, Video as VideoIcon,
-  Clock, Loader2, Link2Off, Play, AlertTriangle, X,
+  Clock, Loader2, Link2Off, Play, AlertTriangle, X, Copy, Check,
 } from 'lucide-react';
 import { fetchSharedDrive, formatBytes, refreshDelayMs, SharedDrivePayload, SharedDriveFileEntry } from '../lib/drive';
 
@@ -20,6 +20,46 @@ function fileIcon(mime: string) {
   if (mime?.startsWith('video/')) return <VideoIcon className="w-4 h-4" />;
   return <FileText className="w-4 h-4" />;
 }
+
+// Nota de texto: o conteúdo vem embutido no payload, então aparece na hora e o visitante copia num
+// clique — que é a razão de existir da nota.
+const TextNote: React.FC<{ content: string }> = ({ content }) => {
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Navegador sem permissão de área de transferência (comum dentro de app de mensagem).
+      setFailed(true);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-end mb-2">
+        <button
+          onClick={copy}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+        >
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? 'Copiado' : 'Copiar texto'}
+        </button>
+      </div>
+      <pre className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-[55vh] overflow-y-auto font-mono">
+        {content}
+      </pre>
+      {failed && (
+        <p className="text-[11px] text-amber-600 mt-2">
+          Seu navegador não deixou copiar automaticamente. Selecione o texto acima e copie na mão.
+        </p>
+      )}
+    </div>
+  );
+};
 
 const isVideo = (mime?: string | null) => !!mime && mime.startsWith('video/');
 const isAudio = (mime?: string | null) => !!mime && mime.startsWith('audio/');
@@ -115,6 +155,26 @@ export const SharedDriveBody: React.FC<{ data: SharedDrivePayload }> = ({ data }
   // ---------- Arquivo único ----------
   if (data.file) {
     const previewUrl = data.inline_url || data.url;
+
+    // Nota de texto ganha a página inteira: ler e copiar é tudo que ela precisa.
+    if (data.text_content != null) {
+      return (
+        <Shell>
+          <div className="flex items-center gap-3 mb-4">
+            <FileText className="w-6 h-6 text-blue-500 flex-shrink-0" />
+            <h1 className="text-lg font-bold text-slate-800 break-words flex-1 min-w-0">{data.file}</h1>
+          </div>
+          <TextNote content={data.text_content} />
+          <div className="flex items-center justify-between gap-3 mt-4">
+            <a href={data.url} className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1">
+              <Download className="w-3.5 h-3.5" /> Baixar como arquivo
+            </a>
+            {expiryText(data.expires_at) && <p className="text-xs text-slate-400">{expiryText(data.expires_at)}</p>}
+          </div>
+        </Shell>
+      );
+    }
+
     return (
       <Shell>
         <div className="text-center">
@@ -184,6 +244,16 @@ export const SharedDriveBody: React.FC<{ data: SharedDrivePayload }> = ({ data }
                   <p className="text-xs text-slate-400">{formatBytes(f.size_bytes || 0)}</p>
                 </div>
 
+                {f.text_content != null && (
+                  <button
+                    onClick={() => setPlaying(f)}
+                    className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-1"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Ver texto
+                  </button>
+                )}
+
                 {f.inline_url && (isVideo(f.mime_type) || isAudio(f.mime_type)) && (
                   <button
                     onClick={() => setPlaying(f)}
@@ -223,7 +293,7 @@ export const SharedDriveBody: React.FC<{ data: SharedDrivePayload }> = ({ data }
         Compartilhado pelo Hamilton Planner
       </div>
 
-      {playing && playing.inline_url && (
+      {playing && (playing.text_content != null || playing.inline_url) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/80" onClick={() => setPlaying(null)} />
           <div className="relative w-full max-w-3xl">
@@ -236,10 +306,14 @@ export const SharedDriveBody: React.FC<{ data: SharedDrivePayload }> = ({ data }
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {isAudio(playing.mime_type) ? (
-              <audio src={playing.inline_url} controls autoPlay className="w-full" />
+            {playing.text_content != null ? (
+              <div className="bg-white rounded-xl p-4">
+                <TextNote content={playing.text_content} />
+              </div>
+            ) : isAudio(playing.mime_type) ? (
+              <audio src={playing.inline_url!} controls autoPlay className="w-full" />
             ) : (
-              <video src={playing.inline_url} controls autoPlay playsInline className="w-full rounded-xl bg-black max-h-[75vh]" />
+              <video src={playing.inline_url!} controls autoPlay playsInline className="w-full rounded-xl bg-black max-h-[75vh]" />
             )}
           </div>
         </div>

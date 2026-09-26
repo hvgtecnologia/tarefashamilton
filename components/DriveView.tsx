@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   HardDrive, Folder, FolderPlus, Upload, ChevronRight, Trash2, Link2, Clock,
-  File as FileIcon, Image as ImageIcon, Video as VideoIcon, Check, X, Loader2, Play
+  File as FileIcon, Image as ImageIcon, Video as VideoIcon, Check, X, Loader2, Play,
+  FileText, FilePlus2
 } from 'lucide-react';
 import { DriveFolder, DriveFile } from '../types';
 import {
   listFolders, listFiles, createFolder, deleteFolder, uploadDriveFile,
   deleteDriveFile, updateFileExpiry, updateFolderExpiry, getShareUrl, getOwnerFileUrl,
-  getDriveUsage, formatBytes, EXPIRY_OPTIONS, FOLDER_EXPIRY_OPTIONS, DEFAULT_FOLDER_EXPIRY_HOURS
+  getDriveUsage, formatBytes, isTextFile, EXPIRY_OPTIONS, FOLDER_EXPIRY_OPTIONS, DEFAULT_FOLDER_EXPIRY_HOURS
 } from '../lib/drive';
+import DriveTextModal from './DriveTextModal';
 
-function fileIcon(mime: string) {
+function fileIcon(mime: string, name?: string) {
   if (mime.startsWith('image/')) return <ImageIcon className="w-4 h-4" />;
   if (mime.startsWith('video/')) return <VideoIcon className="w-4 h-4" />;
+  if (isTextFile(mime, name)) return <FileText className="w-4 h-4" />;
   return <FileIcon className="w-4 h-4" />;
 }
 
@@ -45,6 +48,8 @@ const DriveView: React.FC = () => {
   // impressão de ter travado.
   const [progress, setProgress] = useState<{ name: string; sent: number; total: number; index: number; count: number } | null>(null);
   const [preview, setPreview] = useState<{ file: DriveFile; url: string } | null>(null);
+  // null = fechado; { file: null } = criando nota nova; { file } = editando a nota
+  const [textEditor, setTextEditor] = useState<{ file: DriveFile | null } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
 
@@ -151,6 +156,11 @@ const DriveView: React.FC = () => {
   };
 
   const handleOpenFile = async (file: DriveFile) => {
+    // Nota de texto abre para ler e editar aqui dentro; baixar um .txt não serve para nada.
+    if (isTextFile(file.mimeType, file.name)) {
+      setTextEditor({ file });
+      return;
+    }
     try {
       const url = await getOwnerFileUrl(file);
       const playable = /^(video|audio|image)\//.test(file.mimeType || '');
@@ -243,6 +253,15 @@ const DriveView: React.FC = () => {
             </option>
           ))}
         </select>
+
+        <button
+          onClick={() => setTextEditor({ file: null })}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+          title="Escrever uma orientação que vira arquivo nesta pasta"
+        >
+          <FilePlus2 className="w-4 h-4" />
+          Nova nota
+        </button>
 
         <button
           onClick={handleUploadClick}
@@ -388,7 +407,7 @@ const DriveView: React.FC = () => {
             const expiry = expiryLabel(file.expiresAt);
             return (
               <div key={file.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
-                <div className="text-slate-400 flex-shrink-0">{fileIcon(file.mimeType)}</div>
+                <div className="text-slate-400 flex-shrink-0">{fileIcon(file.mimeType, file.name)}</div>
                 <button onClick={() => handleOpenFile(file)} className="flex-1 min-w-0 text-left" title="Abrir arquivo">
                   <p className="text-sm font-medium text-slate-700 truncate hover:text-blue-600">{file.name}</p>
                   <p className="text-xs text-slate-400">{formatBytes(file.sizeBytes)}</p>
@@ -455,6 +474,19 @@ const DriveView: React.FC = () => {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800 text-white text-sm px-4 py-3 rounded-xl shadow-lg">
           {notice}
         </div>
+      )}
+
+      {textEditor && (
+        <DriveTextModal
+          file={textEditor.file}
+          folderId={currentFolderId}
+          expiryHours={pendingExpiryHours}
+          onClose={() => setTextEditor(null)}
+          onSaved={() => {
+            setNotice(textEditor.file ? 'Nota salva.' : 'Nota criada.');
+            reload(currentFolderId);
+          }}
+        />
       )}
 
       {preview && (

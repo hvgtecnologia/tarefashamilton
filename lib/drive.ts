@@ -55,6 +55,9 @@ export interface SharedDriveFileEntry {
     // Link sem download forçado, para assistir/ver na própria página. Só vem para vídeo, áudio,
     // imagem e PDF.
     inline_url?: string | null;
+    // Conteúdo já embutido, para nota de texto. Vem pronto no payload em vez de a página buscar o
+    // arquivo: evita depender de CORS no Storage e o texto aparece sem um segundo pedido.
+    text_content?: string | null;
 }
 
 export interface SharedDrivePayload {
@@ -68,7 +71,69 @@ export interface SharedDrivePayload {
     // Quanto tempo os links assinados deste payload valem. A página usa isso para buscar links
     // novos antes de vencerem, em vez de mandar o visitante num link morto.
     ttl_seconds?: number;
+    text_content?: string | null;
     files?: SharedDriveFileEntry[];
+}
+
+// Nota de texto: orientação escrita direto no app e guardada como arquivo na pasta, para quem
+// recebe o link ler e copiar.
+export const TEXT_MIME = 'text/plain';
+// Teto do que a Edge Function embute no payload do link. Nota é texto curto; acima disso o visitante
+// baixa o arquivo como qualquer outro.
+export const TEXT_INLINE_LIMIT_BYTES = 128 * 1024;
+
+export function isTextFile(mimeType?: string | null, name?: string | null): boolean {
+    if (mimeType && mimeType.startsWith('text/')) return true;
+    return !!name && /\.(txt|md|markdown|csv|log)$/i.test(name);
+}
+
+// Garante que a nota tenha extensão de texto, senão o navegador de quem baixa não sabe o que fazer
+// com ela. Só aceita uma extensão de texto conhecida: um nome como "Processo v1.2" tem um ponto no
+// fim mas "2" não é extensão nenhuma, e sem isso o arquivo saía como tipo desconhecido.
+const TEXT_EXTENSION_RE = /\.(txt|md|markdown|csv|log)$/i;
+
+export function normalizeTextFileName(name: string): string {
+    const trimmed = name.trim() || 'Orientações';
+    return TEXT_EXTENSION_RE.test(trimmed) ? trimmed : `${trimmed}.txt`;
+}
+
+export async function createDriveTextFile(
+    name: string,
+    content: string,
+    folderId: string | null,
+    expiryHours: number | null,
+): Promise<DriveFile> {
+    const fileName = normalizeTextFileName(name);
+    const file = new File([content], fileName, { type: TEXT_MIME });
+    return uploadDriveFile(file, folderId, expiryHours);
+}
+
+// Lê a nota para o dono editar. O bucket é privado, mas o supabase-js já vai autenticado.
+export async function readDriveText(file: DriveFile): Promise<string> {
+    const { data, error } = await supabase.storage.from(DRIVE_BUCKET).download(file.storagePath);
+    if (error || !data) throw new Error('Não foi possível abrir a nota.');
+    return await data.text();
+}
+
+// Sobrescreve a nota no mesmo caminho, então o link já compartilhado continua valendo e passa a
+// mostrar o texto novo.
+export async function saveDriveText(file: DriveFile, content: string): Promise<void> {
+    const blob = new Blob([content], { type: TEXT_MIME });
+    const { error: uploadError } = await supabase.storage
+        .from(DRIVE_BUCKET)
+        .upload(file.storagePath, blob, { contentType: TEXT_MIME, upsert: true });
+    if (uploadError) throw new Error(`Não foi possível salvar: ${uploadError.message}`);
+
+    const { error } = await supabase
+        .from('drive_files')
+        .update({ size_bytes: blob.size })
+        .eq('id', file.id);
+    if (error) throw new Error(error.message);
+}
+
+export async function renameDriveFile(id: string, name: string): Promise<void> {
+    const { error } = await supabase.from('drive_files').update({ name: normalizeTextFileName(name) }).eq('id', id);
+    if (error) throw new Error(error.message);
 }
 
 // Quando buscar links novos. Os links assinados morrem na hora marcada, e quem recebe o link

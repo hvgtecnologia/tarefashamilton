@@ -47,6 +47,31 @@ function ttlFor(expiresAt: string | null | undefined): number {
 const isPlayable = (mime: string | null | undefined) =>
   !!mime && (mime.startsWith("video/") || mime.startsWith("audio/") || mime.startsWith("image/") || mime === "application/pdf");
 
+// Nota de texto (orientação escrita no app). O conteúdo vai embutido no JSON em vez de a página
+// buscar o arquivo: o visitante lê e copia sem um segundo pedido, e não dependemos de CORS no
+// Storage. Só até o teto — acima disso é arquivo normal, para baixar.
+const TEXT_INLINE_LIMIT_BYTES = 128 * 1024;
+
+const isTextNote = (mime: string | null | undefined, name: string | null | undefined) =>
+  (!!mime && mime.startsWith("text/")) || (!!name && /\.(txt|md|markdown|csv|log)$/i.test(name));
+
+async function readText(
+  admin: ReturnType<typeof createClient>,
+  path: string,
+  sizeBytes: number,
+  mime: string | null | undefined,
+  name: string | null | undefined,
+): Promise<string | null> {
+  if (!isTextNote(mime, name)) return null;
+  if (sizeBytes > TEXT_INLINE_LIMIT_BYTES) return null;
+  const { data, error } = await admin.storage.from(BUCKET).download(path);
+  if (error || !data) {
+    console.error("Erro ao ler nota", path, error?.message);
+    return null;
+  }
+  return await data.text();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -83,16 +108,19 @@ serve(async (req) => {
 
       const files = await Promise.all(
         folderRows.map(async (r: any) => {
+          const size = Number(r.size_bytes) || 0;
           const downloadUrl = await sign(r.storage_path, ttl, r.file_name);
           // Sem "download" forçado: é o que permite assistir o vídeo na própria página.
           const inlineUrl = isPlayable(r.mime_type) ? await sign(r.storage_path, ttl) : null;
+          const textContent = await readText(admin, r.storage_path, size, r.mime_type, r.file_name);
           return {
             name: r.file_name as string,
-            size_bytes: Number(r.size_bytes) || 0,
+            size_bytes: size,
             mime_type: r.mime_type as string,
             subfolder: (r.folder_path as string) || "",
             url: downloadUrl,
             inline_url: inlineUrl,
+            text_content: textContent,
           };
         }),
       );
@@ -116,14 +144,16 @@ serve(async (req) => {
       const inlineUrl = (isPlayable(fileRow.mime_type) ? await sign(fileRow.storage_path, ttl) : null) ?? downloadUrl;
       if (!downloadUrl) return gone();
 
+      const size = Number(fileRow.size_bytes) || 0;
       return json({
         file: fileRow.name,
-        size_bytes: Number(fileRow.size_bytes) || 0,
+        size_bytes: size,
         mime_type: fileRow.mime_type,
         expires_at: fileRow.expires_at,
         ttl_seconds: ttl,
         url: downloadUrl,
         inline_url: inlineUrl,
+        text_content: await readText(admin, fileRow.storage_path, size, fileRow.mime_type, fileRow.name),
       });
     }
 

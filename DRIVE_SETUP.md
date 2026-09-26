@@ -1,6 +1,6 @@
 # Meu Drive
 
-Seu drive dentro do Planner: pastas, subpastas e arquivos. Você compartilha **a pasta inteira** por um link (quem recebe vê e baixa tudo que está dentro, sem login) ou **um arquivo isolado**. Toda pasta tem prazo de validade: quando vence, a pasta e tudo dentro dela são apagados de verdade.
+Seu drive dentro do Planner: pastas, subpastas, arquivos e notas de texto. Você compartilha **a pasta inteira** por um link (quem recebe vê e baixa tudo que está dentro, sem login) ou **um arquivo isolado**. Toda pasta tem prazo de validade: quando vence, a pasta e tudo dentro dela são apagados de verdade.
 
 ---
 
@@ -9,9 +9,10 @@ Seu drive dentro do Planner: pastas, subpastas e arquivos. Você compartilha **a
 1. No menu lateral, clique em **Meu Drive**.
 2. **Nova pasta** → dê o nome e escolha a validade (padrão: 30 dias).
 3. Entre na pasta e clique em **Enviar arquivos**. Cada arquivo pode ter validade própria, mais curta que a da pasta. Arquivo grande mostra barra de progresso e sobe em pedaços — se a internet oscilar, ele retoma de onde parou em vez de recomeçar. Não feche a aba.
-4. Vídeo e áudio têm **Assistir**: toca ali mesmo, sem baixar. Vale para você no Drive e para quem recebe o link.
-5. Na linha da pasta, clique em **Link** para copiar. O link é do **seu próprio site** (algo como `https://seusite.com/#/s/abc123`), e abre uma página com a lista dos arquivos e um botão de baixar em cada um.
-6. Para mudar um prazo depois, clique no seletor de tempo (o relógio) da pasta ou do arquivo.
+4. **Nova nota** → escreva uma orientação ali mesmo. Ela vira um arquivo `.txt` na pasta. Quem abrir o link **lê o texto na tela e copia num clique**, sem baixar nada. Para mudar depois, clique no nome da nota: abre o editor, e salvar mantém o mesmo link — quem já recebeu passa a ver o texto novo.
+5. Vídeo e áudio têm **Assistir**: toca ali mesmo, sem baixar. Vale para você no Drive e para quem recebe o link.
+6. Na linha da pasta, clique em **Link** para copiar. O link é do **seu próprio site** (algo como `https://seusite.com/#/s/abc123`), e abre uma página com a lista dos arquivos e um botão de baixar em cada um.
+7. Para mudar um prazo depois, clique no seletor de tempo (o relógio) da pasta ou do arquivo.
 
 **A validade manda em cascata.** Se a pasta vence, nada dentro dela abre, mesmo que um arquivo tenha prazo maior. O mesmo vale para subpastas.
 
@@ -40,7 +41,9 @@ Por trás da página existe uma API que devolve tudo em JSON. Basta trocar o end
 https://<seu-project-ref>.functions.supabase.co/drive-share?t=<token>
 ```
 
-Resposta: nome da pasta, validade e, para cada arquivo, nome, tamanho, tipo, subpasta e uma URL de download temporária (1 hora).
+Resposta: nome da pasta, validade, e para cada arquivo nome, tamanho, tipo, subpasta, uma URL de download temporária e — quando é vídeo, áudio, imagem ou PDF — uma URL de visualização sem download forçado.
+
+Nota de texto vem com o conteúdo já dentro do JSON, no campo `text_content` (até 128 KB). Não precisa buscar o arquivo para ler a orientação.
 
 ---
 
