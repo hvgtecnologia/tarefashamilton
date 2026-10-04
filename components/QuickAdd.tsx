@@ -159,7 +159,9 @@ const QuickAdd: React.FC<QuickAddProps> = ({
       scheduledDate: parsed.date || scheduledDate || undefined,
       scheduledTime: scheduledTime || undefined,
       dueDate: dueDate || undefined,
-      dayOfWeek: 'inbox',
+      // Tarefa com data é tarefa agendada. Antes isto era 'inbox' fixo, então tudo que saía do
+      // "Adicionar rápido" ficava marcado como caixa de entrada mesmo tendo dia marcado.
+      dayOfWeek: (parsed.date || scheduledDate) ? 'monday' : 'inbox',
       notes,
       attachments,
       checklist: finalChecklist,

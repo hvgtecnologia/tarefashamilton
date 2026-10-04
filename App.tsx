@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
 import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember } from './types';
-import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime } from './constants';
+import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime, getInboxTasks } from './constants';
 import KanbanBoard from './components/KanbanBoard';
 import Sidebar from './components/Sidebar';
 import TaskModal from './components/TaskModal';
@@ -442,11 +442,12 @@ const App: React.FC = () => {
     }
 
     // Mesma ordenação usada para renderizar a coluna, para os índices do drag baterem certo.
-    const destTasks = destination.droppableId === 'inbox'
-      ? tasks
-          .filter(t => t.id !== draggableId && t.dayOfWeek === 'inbox')
-          .sort((a, b) => a.position - b.position)
-      : sortTasksByTime(tasks.filter(t => t.id !== draggableId && t.scheduledDate === destination.droppableId));
+    // Antes esta lista filtrava por dayOfWeek e a coluna desenhava outra coisa, então soltar na
+    // caixa de entrada reordenava as tarefas erradas.
+    const remaining = tasks.filter(t => t.id !== draggableId);
+    const destTasks: Task[] = destination.droppableId === 'inbox'
+      ? getInboxTasks(remaining, todayISO())
+      : sortTasksByTime(remaining.filter(t => t.scheduledDate === destination.droppableId));
 
     destTasks.splice(destination.index, 0, updated);
     destTasks.forEach((t, i) => { t.position = i; });

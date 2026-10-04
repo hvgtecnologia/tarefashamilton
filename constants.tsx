@@ -232,6 +232,28 @@ export const sortTasksByTime = <T extends { scheduledTime?: string; position: nu
   return [...withoutTime, ...withTime];
 };
 
+// A primeira coluna do quadro: o que precisa de atenção AGORA.
+// Só tarefa sem data e tarefa vencida. Tarefa com data futura mora na coluna do dia dela — antes
+// ela também aparecia aqui, porque o filtro olhava o campo legado dayOfWeek em vez da data, e o
+// "Adicionar rápido" marcava tudo como 'inbox'. Resultado: a coluna virava uma cópia da agenda.
+//
+// Usada tanto para desenhar a coluna quanto para calcular a posição no arrastar, para as duas
+// nunca mais discordarem sobre o que está ali dentro.
+export const getInboxTasks = <T extends { scheduledDate?: string; position: number }>(
+  list: T[],
+  today: string,
+): T[] => {
+  const noDate = list
+    .filter(t => !t.scheduledDate)
+    .sort((a, b) => a.position - b.position);
+
+  const overdue = list
+    .filter(t => t.scheduledDate && t.scheduledDate < today)
+    .sort((a, b) => (a.scheduledDate as string).localeCompare(b.scheduledDate as string)); // antiga -> recente
+
+  return [...noDate, ...overdue];
+};
+
 export const getWeekDates = (startOfWeek: Date): { date: string, label: string, dayKey: DayOfWeek }[] => {
   const days: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   return days.map((day, index) => {
