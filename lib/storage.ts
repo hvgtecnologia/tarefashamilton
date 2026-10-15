@@ -276,9 +276,14 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.category !== undefined) dbUpdates.category = updates.category;
         if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
         if (updates.dayOfWeek !== undefined) dbUpdates.day_of_week = updates.dayOfWeek;
-        if (updates.scheduledDate !== undefined) dbUpdates.scheduled_date = updates.scheduledDate;
-        if (updates.scheduledTime !== undefined) dbUpdates.scheduled_time = updates.scheduledTime;
-        if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+        // Data e horário PRECISAM poder ser apagados. A chave presente com valor undefined significa
+        // "limpar" (arrastar para a caixa de entrada, tirar o horário, apagar o prazo); chave
+        // ausente significa "não mexer". Com a checagem antiga (!== undefined) os dois casos
+        // caíam no mesmo saco e apagar nunca chegava ao banco: ao recarregar, o horário e a data
+        // voltavam.
+        if ('scheduledDate' in updates) dbUpdates.scheduled_date = updates.scheduledDate ?? null;
+        if ('scheduledTime' in updates) dbUpdates.scheduled_time = updates.scheduledTime ?? null;
+        if ('dueDate' in updates) dbUpdates.due_date = updates.dueDate ?? null;
         if (updates.position !== undefined) dbUpdates.position = updates.position;
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
         if (updates.isCompleted !== undefined) dbUpdates.is_completed = updates.isCompleted;

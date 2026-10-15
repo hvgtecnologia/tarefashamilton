@@ -54,7 +54,7 @@ export function CalendarView({ tasks, projects, onDayClick, onTaskClick, embedde
         calendarDays.push(new Date(year, month + 1, i));
     }
 
-    // Get tasks for a specific date, ordenadas por horário (sem horário no topo)
+    // Get tasks for a specific date, ordenadas por horário (com horário primeiro, sem horário depois)
     const getTasksForDate = (date: Date): Task[] => {
         const dateStr = formatDateISO(date);
         return sortTasksByTime(tasks.filter(task => task.scheduledDate === dateStr));

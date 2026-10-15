@@ -225,11 +225,24 @@ export const isToday = (dateStr?: string): boolean => {
   return dateStr === todayISO();
 };
 
-// Ordena tarefas de um mesmo dia por horário (HH:MM asc); sem horário ficam no topo, ordenadas por position.
+// Comparador de horário para listas já agrupadas por dia: com horário vem antes de sem horário, e
+// os horários em ordem crescente. Sem horário empata (0) e fica na ordem em que já estava.
+export const compareByTime = (a: { scheduledTime?: string }, b: { scheduledTime?: string }): number => {
+  if (a.scheduledTime && b.scheduledTime) return a.scheduledTime.localeCompare(b.scheduledTime);
+  if (a.scheduledTime) return -1;
+  if (b.scheduledTime) return 1;
+  return 0;
+};
+
+// Ordena tarefas de um mesmo dia: com horário primeiro (HH:MM asc), depois as sem horário por position.
+// Dentro de um dia: primeiro as tarefas com horário (na ordem do horário), depois as sem horário
+// (na ordem manual). Empate de horário cai na posição, para a ordem ser estável.
 export const sortTasksByTime = <T extends { scheduledTime?: string; position: number }>(list: T[]): T[] => {
+  const withTime = list
+    .filter(t => t.scheduledTime)
+    .sort((a, b) => (a.scheduledTime as string).localeCompare(b.scheduledTime as string) || a.position - b.position);
   const withoutTime = list.filter(t => !t.scheduledTime).sort((a, b) => a.position - b.position);
-  const withTime = list.filter(t => t.scheduledTime).sort((a, b) => (a.scheduledTime as string).localeCompare(b.scheduledTime as string));
-  return [...withoutTime, ...withTime];
+  return [...withTime, ...withoutTime];
 };
 
 // A primeira coluna do quadro: o que precisa de atenção AGORA.

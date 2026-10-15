@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Trash2, FileText, Plus, Calendar, Save, Edit3, Eye, Paperclip,
-  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle, HardDrive
+  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle, HardDrive, Clock
 } from 'lucide-react';
 import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence, DriveLink } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
@@ -493,24 +493,12 @@ const TaskModal: React.FC<TaskModalProps> = ({
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                     <Calendar className="w-3 h-3" /> Vou fazer em
                   </label>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="date"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
-                      value={scheduledDate}
-                      onChange={e => setScheduledDate(e.target.value)}
-                    />
-                    <input
-                      type="time"
-                      title="Horário (opcional)"
-                      className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
-                      value={scheduledTime}
-                      onChange={e => setScheduledTime(e.target.value)}
-                    />
-                  </div>
-                  <p className="text-[10px] text-blue-600 mt-1 italic leading-tight">
-                    📅 Esta é a data que a tarefa aparece no calendário e na semana. Com horário, as tarefas do dia ficam ordenadas por ele (sem horário fica no topo).
-                  </p>
+                  <input
+                    type="date"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={scheduledDate}
+                    onChange={e => setScheduledDate(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -522,10 +510,39 @@ const TaskModal: React.FC<TaskModalProps> = ({
                     value={dueDate}
                     onChange={e => setDueDate(e.target.value)}
                   />
-                  <p className="text-[10px] text-slate-500 mt-1 italic leading-tight">
-                    ⏰ Deadline (quando precisa estar pronta)
-                  </p>
                 </div>
+              </div>
+
+              {/* Horário: linha própria. Dentro da coluna de "Vou fazer em" (~100px) o campo era
+                  empurrado para fora e ficava invisível, então só dava para definir na criação. */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Horário
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="time"
+                    className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={scheduledTime}
+                    onChange={e => setScheduledTime(e.target.value)}
+                  />
+                  {scheduledTime && (
+                    <button
+                      type="button"
+                      onClick={() => setScheduledTime('')}
+                      className="px-3 text-xs font-semibold text-slate-500 hover:text-rose-600 bg-white border border-slate-200 rounded-lg"
+                      title="Tirar o horário"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-blue-600 mt-1 italic leading-tight">
+                  📅 Em cada dia, as tarefas com horário aparecem primeiro, na ordem do horário; as sem horário vêm depois.
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5 italic leading-tight">
+                  ⏰ Prazo = deadline (quando precisa estar pronta).
+                </p>
               </div>
 
               {/* Recorrência */}

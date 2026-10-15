@@ -3,7 +3,7 @@ import { LogOut, RefreshCw, CheckCircle2, AlertTriangle, ClipboardList, PartyPop
 import { Task, Category, Project, TaskStatus } from '../types';
 import { getTasks, getCategories, getProjects, updateTask } from '../lib/storage';
 import { signOut } from '../lib/supabase';
-import { todayISO, sortTasksByTime, formatPrettyDate, getStartOfWeek } from '../constants';
+import { todayISO, sortTasksByTime, formatPrettyDate, getStartOfWeek, compareByTime } from '../constants';
 import TaskCard from './TaskCard';
 import MemberTaskModal from './MemberTaskModal';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -88,7 +88,7 @@ const MemberApp: React.FC<MemberAppProps> = ({ memberName, onLogout }) => {
   const groups = useMemo(() => {
     const open = tasks.filter(t => !t.isCompleted);
     const byDayTime = (a: Task, b: Task) =>
-      (taskDay(a) || '').localeCompare(taskDay(b) || '') || (a.scheduledTime || '').localeCompare(b.scheduledTime || '');
+      (taskDay(a) || '').localeCompare(taskDay(b) || '') || compareByTime(a, b);
     return {
       total: open.length,
       overdue: open.filter(t => taskDay(t) && taskDay(t)! < today).sort(byDayTime),

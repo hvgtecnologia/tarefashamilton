@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Users, UserPlus, KeyRound, Trash2, RefreshCw, Send, CheckCircle2, AlertTriangle, Clock, MessageCircle, Pencil, Phone } from 'lucide-react';
 import { Task, TeamMember } from '../types';
-import { todayISO, isOverdue, formatPrettyDate, sortTasksByTime } from '../constants';
+import { todayISO, isOverdue, formatPrettyDate, sortTasksByTime, compareByTime } from '../constants';
 import { hasWhatsapp, whatsappLink, reminderMessage } from '../lib/team';
 
 interface TeamViewProps {
@@ -48,7 +48,7 @@ const TeamView: React.FC<TeamViewProps> = ({
       const overdue = open.filter(t => isOverdue(taskDay(t))).sort((a, b) => (taskDay(a) || '').localeCompare(taskDay(b) || ''));
       const rest = open.filter(t => !isOverdue(taskDay(t)));
       const dated = rest.filter(t => taskDay(t)).sort((a, b) =>
-        (taskDay(a) || '').localeCompare(taskDay(b) || '') || (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
+        (taskDay(a) || '').localeCompare(taskDay(b) || '') || compareByTime(a, b));
       const undated = sortTasksByTime(rest.filter(t => !taskDay(t)));
       const doneRecently = tasks.filter(t => t.isCompleted && t.completedBy === member.userId && t.completedAt && new Date(t.completedAt).getTime() >= monthAgo).length;
       return { member, open: [...overdue, ...dated, ...undated], overdueCount: overdue.length, doneRecently };

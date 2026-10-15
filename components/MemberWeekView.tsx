@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Inbox, CheckCircle2 } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
-import { todayISO, getWeekDates, getStartOfWeek, sortTasksByTime } from '../constants';
+import { todayISO, getWeekDates, getStartOfWeek, sortTasksByTime, compareByTime } from '../constants';
 import TaskCard from './TaskCard';
 
 interface MemberWeekViewProps {
@@ -28,7 +28,7 @@ const MemberWeekView: React.FC<MemberWeekViewProps> = ({
   const columns = useMemo(() => {
     const open = tasks.filter(t => !t.isCompleted);
     const byDayTime = (a: Task, b: Task) =>
-      (taskDay(a) || '').localeCompare(taskDay(b) || '') || (a.scheduledTime || '').localeCompare(b.scheduledTime || '');
+      (taskDay(a) || '').localeCompare(taskDay(b) || '') || compareByTime(a, b);
 
     const backlog = [
       ...open.filter(t => taskDay(t) && taskDay(t)! < today).sort(byDayTime),
