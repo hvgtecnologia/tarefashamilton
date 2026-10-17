@@ -183,15 +183,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2 ml-2">
               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Negócios / Projetos</h3>
-              <div className="flex items-center gap-0.5">
-                <button onClick={() => { onOpenTemplates(); onClose?.(); }} className="p-1 hover:bg-slate-100 rounded" title="Projeto a partir de um modelo">
-                  <LayoutTemplate className="w-3 h-3 text-slate-500" />
-                </button>
-                <button onClick={() => setIsAddingProject(true)} className="p-1 hover:bg-slate-100 rounded" title="Novo projeto">
-                  <Plus className="w-3 h-3 text-slate-500" />
-                </button>
-              </div>
+              <button onClick={() => setIsAddingProject(true)} className="p-1 hover:bg-slate-100 rounded" title="Novo projeto">
+                <Plus className="w-3 h-3 text-slate-500" />
+              </button>
             </div>
+            <button
+              onClick={() => { onOpenTemplates(); onClose?.(); }}
+              className="flex items-center gap-2 w-full px-3 py-1.5 mb-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg"
+            >
+              <LayoutTemplate className="w-3.5 h-3.5" />
+              Criar projeto de um modelo
+            </button>
             <div className="space-y-0.5">
               {projects.length === 0 && (
                 <p className="text-[11px] text-slate-400 italic px-3 py-1">

@@ -582,7 +582,7 @@ const App: React.FC = () => {
   // ============ Filtered & derived ============
 
   // Clientes já usados, para sugerir ao digitar nos formulários
-  const clientList = useMemo(() => clientNames(tasks), [tasks]);
+  const clientList = useMemo(() => clientNames(tasks, projects), [tasks, projects]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -875,7 +875,7 @@ const App: React.FC = () => {
               onTaskClick={(task) => openTaskModal(task)}
             />
           ) : view === 'clients' ? (
-            <ClientsView tasks={tasks} onOpenTask={(task) => openTaskModal(task)} />
+            <ClientsView tasks={tasks} projects={projects} onOpenTask={(task) => openTaskModal(task)} />
           ) : view === 'drive' ? (
             <DriveView />
           ) : (

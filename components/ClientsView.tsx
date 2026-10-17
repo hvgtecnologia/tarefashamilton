@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, AlertCircle, CheckCircle2, Circle } from 'lucide-react';
-import { Task } from '../types';
+import { Task, Project } from '../types';
 import { todayISO, formatPrettyDate } from '../constants';
 import { summarizeClients } from '../lib/clients';
 import { sortSteps } from '../lib/steps';
@@ -8,14 +8,15 @@ import { useTeam, firstName } from './TeamContext';
 
 interface ClientsViewProps {
   tasks: Task[];
+  projects?: Project[];
   onOpenTask: (task: Task) => void;
 }
 
 // Tudo de cada cliente num lugar só: o que está aberto, o que está atrasado e o que já foi feito.
-const ClientsView: React.FC<ClientsViewProps> = ({ tasks, onOpenTask }) => {
+const ClientsView: React.FC<ClientsViewProps> = ({ tasks, projects = [], onOpenTask }) => {
   const { findMember } = useTeam();
   const today = todayISO();
-  const clients = useMemo(() => summarizeClients(tasks, today), [tasks, today]);
+  const clients = useMemo(() => summarizeClients(tasks, today, projects), [tasks, today, projects]);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [showDone, setShowDone] = useState<Record<string, boolean>>({});
 
@@ -24,14 +25,17 @@ const ClientsView: React.FC<ClientsViewProps> = ({ tasks, onOpenTask }) => {
       <div className="max-w-3xl mx-auto text-center py-20 text-slate-400">
         <Building2 className="w-12 h-12 mx-auto mb-3 opacity-40" />
         <p className="text-sm font-medium text-slate-500">Nenhum cliente ainda</p>
-        <p className="text-xs mt-1">Preencha o campo <strong>Cliente</strong> ao criar ou editar uma tarefa e ela passa a aparecer aqui.</p>
+        <p className="text-xs mt-1">Cada negócio/projeto já conta como um cliente. Para separar clientes dentro de um mesmo projeto, preencha o campo <strong>Cliente</strong> na tarefa.</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-3xl mx-auto space-y-3">
-      <h1 className="text-lg font-bold text-slate-800 mb-1">Clientes</h1>
+      <div className="mb-1">
+        <h1 className="text-lg font-bold text-slate-800">Clientes</h1>
+        <p className="text-xs text-slate-400">Cada negócio/projeto conta como um cliente. Para separar clientes dentro de um mesmo projeto, use o campo Cliente na tarefa.</p>
+      </div>
       {clients.map(c => {
         const isOpen = !!open[c.name];
         const openTasks: Task[] = sortSteps<Task>(c.tasks.filter(t => !t.isCompleted));
