@@ -16,6 +16,7 @@ import { CalendarSyncModal } from './components/CalendarSyncModal';
 import TeamView from './components/TeamView';
 import DriveView from './components/DriveView';
 import ClientsView from './components/ClientsView';
+import OverdueBelt from './components/OverdueBelt';
 import TemplatesModal, { ActivateOptions } from './components/TemplatesModal';
 import ProjectPeopleModal from './components/ProjectPeopleModal';
 import MemberTaskModal from './components/MemberTaskModal';
@@ -770,6 +771,7 @@ const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col min-w-0 w-full relative">
+        <OverdueBelt tasks={tasks} />
         <header className="border-b bg-white flex flex-col md:flex-row md:items-center justify-between px-3 py-3 md:px-5 md:h-16 gap-3 flex-shrink-0 z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-3 flex-1">
             <div className="flex items-center justify-between w-full md:w-auto">
