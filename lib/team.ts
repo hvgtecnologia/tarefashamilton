@@ -8,9 +8,12 @@ import { formatPrettyDate } from '../constants';
 export const TEAM_EMAIL_DOMAIN = 'equipe.invalid';
 
 export interface TeamContextData {
-  role: 'master' | 'member';
+  // 'manager' = membro que administra pelo menos um projeto: usa a tela completa, mas só enxerga o
+  // que o banco libera para ele.
+  role: 'master' | 'member' | 'manager';
   members: TeamMember[];
   membership?: { name: string; username: string; masterId: string };
+  adminProjectIds?: string[];
   // false quando a migração V5 ainda não foi aplicada no banco
   ready: boolean;
 }
@@ -40,12 +43,28 @@ export async function loadTeamContext(): Promise<TeamContextData> {
 
   const own = (data || []).find(r => r.member_user_id === user.id);
   if (own) {
-    return {
-      role: 'member',
-      members: [],
-      membership: { name: own.name, username: own.username, masterId: own.master_id },
-      ready: true,
-    };
+    const membership = { name: own.name, username: own.username, masterId: own.master_id };
+
+    // Administra algum projeto? Só consulta se a V11 existir; senão é um membro comum
+    try {
+      const { data: adminRows, error: adminError } = await supabase
+        .from('project_members').select('project_id').eq('member_user_id', user.id).eq('role', 'admin');
+      if (!adminError && adminRows && adminRows.length > 0) {
+        const { data: team } = await supabase.rpc('project_team');
+        return {
+          role: 'manager',
+          members: (team || []).map((row: any): TeamMember => ({
+            id: row.id, userId: row.member_user_id, name: row.name, username: row.username || '',
+            phone: row.phone || undefined, createdAt: row.created_at,
+          })),
+          membership,
+          adminProjectIds: adminRows.map((r: any) => r.project_id),
+          ready: true,
+        };
+      }
+    } catch { /* trata como membro comum */ }
+
+    return { role: 'member', members: [], membership, ready: true };
   }
 
   return { role: 'master', members: (data || []).filter(r => r.master_id === user.id).map(rowToMember), ready: true };
@@ -79,7 +98,7 @@ async function callTeamFunction(body: Record<string, unknown>): Promise<any> {
   return data;
 }
 
-export async function createTeamMember(input: { name: string; username: string; password: string }): Promise<TeamMember> {
+export async function createTeamMember(input: { name: string; username: string; password: string; phone?: string; project_id?: string }): Promise<TeamMember> {
   const data = await callTeamFunction({ action: 'create', ...input });
   return rowToMember(data.member);
 }

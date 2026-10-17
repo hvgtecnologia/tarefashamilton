@@ -178,13 +178,22 @@ export async function getTasks(): Promise<Task[]> {
     }
 }
 
+// Quando quem está logado é um ADMINISTRADOR DE PROJETO (e não o master), tudo que ele cria continua
+// sendo do master: é isso que faz aparecer na tela do master e que as regras do banco exigem.
+// O App define isto ao carregar e limpa ao sair.
+let ownerOverride: string | null = null;
+export function setOwnerOverride(masterId: string | null) {
+    ownerOverride = masterId;
+}
+export const isActingForMaster = () => ownerOverride !== null;
+
 export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<Task> {
     if (isSupabaseConfigured()) {
         const user = await getCurrentUser();
         if (!user) throw new Error('No user logged in');
 
         const payload: any = {
-            user_id: user.id,
+            user_id: ownerOverride || user.id,
             title: task.title,
             description: task.description || '',
             urgency: task.urgency,
@@ -490,6 +499,20 @@ export async function addProject(project: Omit<Project, 'id' | 'createdAt' | 'up
     if (isSupabaseConfigured()) {
         const user = await getCurrentUser();
         if (!user) throw new Error('No user logged in');
+
+        // Administrador de projeto: o projeto nasce do master e ele vira admin. Isso é uma função do
+        // banco (não um INSERT) porque ele só passa a enxergar o projeto depois de virar admin.
+        if (ownerOverride) {
+            const { data: created, error: rpcError } = await supabase.rpc('create_project_as_manager', {
+                p_name: project.name, p_description: project.description || '', p_color: project.color,
+            });
+            if (rpcError) throw rpcError;
+            const row: any = Array.isArray(created) ? created[0] : created;
+            return {
+                id: row.id, name: row.name, description: row.description, color: row.color,
+                createdAt: row.created_at, updatedAt: row.updated_at,
+            };
+        }
 
         const { data, error } = await supabase
             .from('projects')

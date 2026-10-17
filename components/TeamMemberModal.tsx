@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus, KeyRound, Copy, Check, RefreshCw, Eye, EyeOff, Phone, Pencil, MessageCircle } from 'lucide-react';
-import { TeamMember } from '../types';
+import { TeamMember, Project, ProjectMember, ProjectRole } from '../types';
+import ProjectAccessEditor from './ProjectAccessEditor';
 import { suggestUsername, generatePassword, accessMessage, whatsappLink, normalizePhone } from '../lib/team';
 
 export type TeamMemberModalMode =
@@ -11,12 +12,20 @@ export type TeamMemberModalMode =
 interface TeamMemberModalProps {
   mode: TeamMemberModalMode;
   onClose: () => void;
-  onCreate: (input: { name: string; username: string; password: string; phone: string }) => Promise<TeamMember>;
+  onCreate: (input: { name: string; username: string; password: string; phone: string; project_id?: string }) => Promise<TeamMember>;
   onReset: (memberId: string, password: string) => Promise<void>;
   onUpdate: (memberId: string, input: { name: string; phone: string }) => Promise<TeamMember>;
+  // Edição de acesso a projetos (só o master; role null = tirar do projeto)
+  projects?: Project[];
+  projectMembers?: ProjectMember[];
+  onChangeProjectRole?: (projectId: string, userId: string, role: ProjectRole | null) => Promise<void>;
+  // Cadastro feito de dentro de um projeto: a pessoa já entra nele
+  createInProject?: Project;
 }
 
-const TeamMemberModal: React.FC<TeamMemberModalProps> = ({ mode, onClose, onCreate, onReset, onUpdate }) => {
+const TeamMemberModal: React.FC<TeamMemberModalProps> = ({
+  mode, onClose, onCreate, onReset, onUpdate, projects, projectMembers, onChangeProjectRole, createInProject,
+}) => {
   const existing = mode.kind === 'create' ? undefined : mode.member;
   const [name, setName] = useState(existing?.name || '');
   const [username, setUsername] = useState(existing?.username || '');
@@ -30,7 +39,7 @@ const TeamMemberModal: React.FC<TeamMemberModalProps> = ({ mode, onClose, onCrea
   const [copied, setCopied] = useState(false);
 
   const title = mode.kind === 'create'
-    ? 'Cadastrar membro da equipe'
+    ? (createInProject ? `Nova pessoa em ${createInProject.name}` : 'Cadastrar membro da equipe')
     : mode.kind === 'edit'
       ? `Editar ${mode.member.name}`
       : `Nova senha para ${mode.member.name}`;
@@ -61,7 +70,7 @@ const TeamMemberModal: React.FC<TeamMemberModalProps> = ({ mode, onClose, onCrea
     setSaving(true);
     try {
       if (mode.kind === 'create') {
-        const member = await onCreate({ name: name.trim(), username, password, phone });
+        const member = await onCreate({ name: name.trim(), username, password, phone, project_id: createInProject?.id });
         setDone({ name: member.name, username: member.username, password, phone: member.phone || '' });
       } else if (mode.kind === 'edit') {
         await onUpdate(mode.member.id, { name: name.trim(), phone });
@@ -229,6 +238,15 @@ const TeamMemberModal: React.FC<TeamMemberModalProps> = ({ mode, onClose, onCrea
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">Mínimo de 6 caracteres. Simples de digitar no celular.</p>
               </div>
+            )}
+
+            {mode.kind === 'edit' && projects && onChangeProjectRole && (
+              <ProjectAccessEditor
+                userId={mode.member.userId}
+                projects={projects}
+                projectMembers={projectMembers || []}
+                onChange={onChangeProjectRole}
+              />
             )}
 
             {error && (

@@ -22,7 +22,7 @@ interface ProjectStepsProps {
 const ProjectSteps: React.FC<ProjectStepsProps> = ({
   project, tasks, onAddTask, onUpdateTask, onCompleteTask, onTaskClick,
 }) => {
-  const { members, findMember } = useTeam();
+  const { members, findMember, role } = useTeam();
   const steps = useMemo(() => sortSteps(tasks), [tasks]);
   const today = todayISO();
 
@@ -105,7 +105,7 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
             {steps.length === 0 ? 'nenhuma ainda' : `${done} de ${steps.length} concluída${done === 1 ? '' : 's'}`}
           </span>
         </h2>
-        {steps.length > 0 && (
+        {steps.length > 0 && role === 'master' && (
           <button
             onClick={saveAsTemplate}
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600"

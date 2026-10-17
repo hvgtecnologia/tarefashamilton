@@ -44,7 +44,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [attachments, setAttachments] = useState<TaskAttachment[]>(task?.attachments || []);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist || []);
   const [recurrence, setRecurrence] = useState<Recurrence>(task?.recurrence || 'none');
-  const { members, findMember } = useTeam();
+  const { members, findMember, role } = useTeam();
   const [assignedTo, setAssignedTo] = useState<string>(task?.assignedTo || '');
   const [uploadError, setUploadError] = useState('');
   const [driveLinks, setDriveLinks] = useState<DriveLink[]>(task?.driveLinks || []);
@@ -291,7 +291,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
               </div>
             )}
 
-            {/* Do Meu Drive */}
+            {/* Do Meu Drive: o Drive é do master, o administrador de projeto não usa */}
+            {role === 'master' && (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -316,6 +317,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                 />
               )}
             </div>
+            )}
 
             {/* Anexos */}
             <div>

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Users, UserPlus, KeyRound, Trash2, RefreshCw, Send, CheckCircle2, AlertTriangle, Clock, MessageCircle, Pencil, Phone } from 'lucide-react';
-import { Task, TeamMember } from '../types';
+import { Task, TeamMember, Project, ProjectMember } from '../types';
+import { projectsOf } from '../lib/access';
 import { todayISO, isOverdue, formatPrettyDate, sortTasksByTime, compareByTime } from '../constants';
 import { hasWhatsapp, whatsappLink, reminderMessage } from '../lib/team';
 import { computeWorkload } from '../lib/workload';
@@ -17,6 +18,9 @@ interface TeamViewProps {
   onOpenTask: (task: Task) => void;
   onMarkSeen: (ids: string[]) => void;
   onRefresh: () => Promise<void>;
+  // Para mostrar quem administra o quê (opcionais: sem a V11 simplesmente não aparece)
+  projects?: Project[];
+  projectMembers?: ProjectMember[];
 }
 
 const taskDay = (t: Task) => t.scheduledDate || t.dueDate;
@@ -29,6 +33,7 @@ const formatCompletion = (iso?: string) => {
 
 const TeamView: React.FC<TeamViewProps> = ({
   members, tasks, ready, onAddMember, onResetPassword, onEditMember, onDeleteMember, onDelegate, onOpenTask, onMarkSeen, onRefresh,
+  projects = [], projectMembers = [],
 }) => {
   const today = todayISO();
   const [refreshing, setRefreshing] = useState(false);
@@ -235,6 +240,17 @@ const TeamView: React.FC<TeamViewProps> = ({
                       <div className="min-w-0">
                         <h3 className="font-bold text-slate-800 truncate">{member.name}</h3>
                         <p className="text-xs text-slate-400 font-mono">@{member.username}</p>
+                        {(() => {
+                          const access = projectsOf(projectMembers, member.userId);
+                          const names = (ids: string[]) => ids.map(id => projects.find(p => p.id === id)?.name).filter(Boolean) as string[];
+                          const admin = names(access.admin);
+                          if (admin.length === 0) return null;
+                          return (
+                            <p className="text-[11px] font-semibold text-violet-600 mt-0.5 truncate" title={admin.join(', ')}>
+                              Administra: {admin.slice(0, 2).join(', ')}{admin.length > 2 ? ` +${admin.length - 2}` : ''}
+                            </p>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">

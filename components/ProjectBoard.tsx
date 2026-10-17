@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Plus, ArrowLeft, Settings, Trash2, AlertCircle, X, HelpCircle, Layers } from 'lucide-react';
+import { Plus, ArrowLeft, Settings, Trash2, AlertCircle, X, HelpCircle, Layers, Users } from 'lucide-react';
 import { Project, Task, Category, TaskStatus, Urgency } from '../types';
 import { STATUS_CONFIG, NATIVE_STATUS_ORDER, isOverdue, CustomStatus, loadCustomStatuses, saveCustomStatuses, buildAllStatuses } from '../constants';
 import TaskCard from './TaskCard';
@@ -20,12 +20,16 @@ interface ProjectBoardProps {
   onTaskClick: (task: Task) => void;
   onDeleteProject: () => void;
   onEditProject: (updates: Partial<Project>) => void;
+  // Quem não administra o projeto (só enxerga porque recebeu uma tarefa nele) vê o quadro, sem editar
+  canManage?: boolean;
+  peopleCount?: number;
+  onOpenPeople?: () => void;
 }
 
 const ProjectBoard: React.FC<ProjectBoardProps> = ({
   project, tasks, categories, projects,
   onBack, onAddTask, onUpdateTask, onCompleteTask, onTaskClick,
-  onDeleteProject, onEditProject,
+  onDeleteProject, onEditProject, canManage = true, peopleCount = 0, onOpenPeople,
 }) => {
   // Quadro por status, ou cronograma de etapas com data/horário/responsável
   const [viewMode, setViewMode] = useState<'board' | 'steps'>('board');
@@ -159,6 +163,17 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
               <Layers className="w-5 h-5" />
             </button>
           </Tooltip>
+          {canManage && onOpenPeople && (
+            <button
+              onClick={onOpenPeople}
+              className="flex items-center gap-1.5 px-2.5 py-2 hover:bg-slate-100 rounded-lg text-slate-600 text-sm font-semibold transition-colors"
+              title="Quem trabalha neste projeto"
+            >
+              <Users className="w-4 h-4" />
+              Pessoas{peopleCount > 0 && <span className="text-xs text-slate-400">{peopleCount}</span>}
+            </button>
+          )}
+          {canManage && (
           <button
             onClick={() => {
               setEditName(project.name);
@@ -171,12 +186,13 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
           >
             <Settings className="w-5 h-5" />
           </button>
+          )}
         </div>
       </div>
 
       {/* Quadro | Etapas */}
       <div className="bg-white border-b px-4 md:px-6 flex gap-1 flex-shrink-0">
-        {([['board', 'Quadro'], ['steps', 'Etapas']] as const).map(([mode, label]) => (
+        {(canManage ? ([['board', 'Quadro'], ['steps', 'Etapas']] as const) : ([['board', 'Quadro']] as const)).map(([mode, label]) => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}

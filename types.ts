@@ -98,6 +98,16 @@ export interface TeamMember {
   createdAt?: string;
 }
 
+// Papel de alguém dentro de um projeto. 'admin' vê e edita tudo do projeto; 'member' só aparece como
+// participante (quem só trabalha nas tarefas delegadas a ele).
+export type ProjectRole = 'admin' | 'member';
+
+export interface ProjectMember {
+  projectId: string;
+  userId: string;
+  role: ProjectRole;
+}
+
 export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team' | 'drive' | 'clients';
 
 export interface DriveFolder {

@@ -1,5 +1,9 @@
 // Supabase Edge Function: manage-team
-// Cria, redefine a senha e remove membros da equipe. Só o gestor (quem não é membro) pode chamar.
+// Cria, redefine a senha e remove membros da equipe.
+// Quem pode chamar:
+//   * o gestor (master): tudo;
+//   * um membro que é ADMINISTRADOR DE PROJETO: cadastrar gente nova (sempre dentro de um projeto que
+//     ele administra) e editar / redefinir a senha só de quem ELE mesmo cadastrou. Nunca remover membro.
 // Deploy com: supabase functions deploy manage-team --project-ref <ref>
 //
 // Por que existe: criar usuário no Supabase Auth exige a service_role key, que jamais pode ir pro navegador.
@@ -38,18 +42,51 @@ function validPassword(password: string): string | null {
   return null;
 }
 
-async function findOwnMember(admin: SupabaseClient, masterId: string, memberId: unknown) {
+// Quem está chamando e com que poderes. ownerId é o master dono da equipe (o próprio, ou o master de
+// quem é administrador de projeto).
+interface Actor {
+  user: User;
+  ownerId: string;
+  isMaster: boolean;
+}
+
+async function findOwnMember(admin: SupabaseClient, actor: Actor, memberId: unknown) {
   if (typeof memberId !== "string") return null;
-  const { data } = await admin
+  let query = admin
     .from("team_members")
     .select("id, member_user_id, name, username, phone")
     .eq("id", memberId)
-    .eq("master_id", masterId)
-    .maybeSingle();
+    .eq("master_id", actor.ownerId);
+  // O administrador de projeto só mexe em quem ele mesmo cadastrou
+  if (!actor.isMaster) query = query.eq("created_by", actor.user.id);
+  const { data } = await query.maybeSingle();
   return data;
 }
 
-async function createMember(admin: SupabaseClient, caller: User, body: any) {
+async function isProjectAdmin(admin: SupabaseClient, userId: string, projectId: string): Promise<boolean> {
+  const { data } = await admin
+    .from("project_members").select("role")
+    .eq("project_id", projectId).eq("member_user_id", userId).eq("role", "admin").maybeSingle();
+  return !!data;
+}
+
+async function createMember(admin: SupabaseClient, actor: Actor, body: any) {
+  const caller = actor.user;
+  const projectId = typeof body.project_id === "string" && body.project_id ? body.project_id : null;
+
+  // Administrador de projeto: só cadastra dentro de um projeto que administra
+  if (!actor.isMaster) {
+    if (!projectId) return json({ error: "Escolha o projeto em que a pessoa vai trabalhar." }, 400);
+    if (!(await isProjectAdmin(admin, caller.id, projectId))) {
+      return json({ error: "Você não administra este projeto." }, 403);
+    }
+  }
+  // Se veio um projeto, ele tem de ser do master dono da equipe (vale para o master também)
+  if (projectId) {
+    const { data: project } = await admin.from("projects").select("id, user_id").eq("id", projectId).maybeSingle();
+    if (!project || project.user_id !== actor.ownerId) return json({ error: "Projeto não encontrado." }, 404);
+  }
+
   const name = String(body.name ?? "").trim();
   const username = String(body.username ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
@@ -77,14 +114,21 @@ async function createMember(admin: SupabaseClient, caller: User, body: any) {
     return json({ error: /already|registered|exists/i.test(message) ? "Esse usuário já existe. Escolha outro." : message }, 400);
   }
 
-  const { data: member, error: insertError } = await admin
-    .from("team_members")
-    .insert({
-      master_id: caller.id, member_user_id: created.user.id, name, username,
-      login_email: loginEmail, phone: normalizePhone(body.phone) || null,
-    })
-    .select("id, member_user_id, name, username, phone, created_at")
-    .single();
+  const memberRow = {
+    master_id: actor.ownerId, member_user_id: created.user.id, name, username,
+    login_email: loginEmail, phone: normalizePhone(body.phone) || null,
+  };
+  const columns = "id, member_user_id, name, username, phone, created_at";
+  let { data: member, error: insertError } = await admin
+    .from("team_members").insert({ ...memberRow, created_by: caller.id }).select(columns).single();
+
+  // A coluna created_by vem da migração V11. Antes dela, o master continua cadastrando normalmente;
+  // o administrador de projeto é que não funciona (e nem existe sem a V11).
+  if (insertError && /created_by/i.test(insertError.message) && actor.isMaster) {
+    const retry = await admin.from("team_members").insert(memberRow).select(columns).single();
+    member = retry.data;
+    insertError = retry.error;
+  }
 
   if (insertError) {
     // Desfaz a criação do usuário para não deixar conta órfã
@@ -92,11 +136,24 @@ async function createMember(admin: SupabaseClient, caller: User, body: any) {
     return json({ error: insertError.message }, 500);
   }
 
+  // Já entra no projeto (como participante; virar admin é uma decisão à parte)
+  if (projectId) {
+    const { error: pmError } = await admin.from("project_members").insert({
+      project_id: projectId, member_user_id: created.user.id, role: "member", added_by: caller.id,
+    });
+    if (pmError) {
+      // Sem isso a pessoa ficaria cadastrada mas sem lugar no projeto: desfaz tudo
+      await admin.from("team_members").delete().eq("id", member.id);
+      await admin.auth.admin.deleteUser(created.user.id);
+      return json({ error: `Não foi possível colocar a pessoa no projeto: ${pmError.message}` }, 500);
+    }
+  }
+
   return json({ member });
 }
 
-async function resetPassword(admin: SupabaseClient, caller: User, body: any) {
-  const member = await findOwnMember(admin, caller.id, body.member_id);
+async function resetPassword(admin: SupabaseClient, actor: Actor, body: any) {
+  const member = await findOwnMember(admin, actor, body.member_id);
   if (!member) return json({ error: "Membro não encontrado." }, 404);
 
   const password = String(body.password ?? "");
@@ -108,8 +165,8 @@ async function resetPassword(admin: SupabaseClient, caller: User, body: any) {
   return json({ ok: true });
 }
 
-async function updateMember(admin: SupabaseClient, caller: User, body: any) {
-  const member = await findOwnMember(admin, caller.id, body.member_id);
+async function updateMember(admin: SupabaseClient, actor: Actor, body: any) {
+  const member = await findOwnMember(admin, actor, body.member_id);
   if (!member) return json({ error: "Membro não encontrado." }, 404);
 
   const name = String(body.name ?? "").trim();
@@ -127,8 +184,10 @@ async function updateMember(admin: SupabaseClient, caller: User, body: any) {
   return json({ member: updated });
 }
 
-async function deleteMember(admin: SupabaseClient, caller: User, body: any) {
-  const member = await findOwnMember(admin, caller.id, body.member_id);
+async function deleteMember(admin: SupabaseClient, actor: Actor, body: any) {
+  // Remover alguém da equipe continua sendo só do master
+  if (!actor.isMaster) return json({ error: "Apenas o gestor pode remover membros." }, 403);
+  const member = await findOwnMember(admin, actor, body.member_id);
   if (!member) return json({ error: "Membro não encontrado." }, 404);
 
   // profiles.id referencia auth.users; remove antes por garantia (a migração V5 também põe ON DELETE CASCADE)
@@ -154,17 +213,27 @@ serve(async (req) => {
     const caller = userData?.user;
     if (userError || !caller) return json({ error: "Sessão inválida. Entre novamente." }, 401);
 
-    // Membro não gerencia equipe
+    // Gestor, ou membro que administra algum projeto. Membro comum não gerencia equipe.
     const { data: callerMembership } = await admin
-      .from("team_members").select("id").eq("member_user_id", caller.id).maybeSingle();
-    if (callerMembership) return json({ error: "Apenas o gestor pode gerenciar a equipe." }, 403);
+      .from("team_members").select("id, master_id").eq("member_user_id", caller.id).maybeSingle();
+
+    let actor: Actor;
+    if (!callerMembership) {
+      actor = { user: caller, ownerId: caller.id, isMaster: true };
+    } else {
+      const { data: adminRow } = await admin
+        .from("project_members").select("project_id")
+        .eq("member_user_id", caller.id).eq("role", "admin").limit(1).maybeSingle();
+      if (!adminRow) return json({ error: "Apenas o gestor pode gerenciar a equipe." }, 403);
+      actor = { user: caller, ownerId: callerMembership.master_id, isMaster: false };
+    }
 
     const body = await req.json().catch(() => ({}));
     switch (body?.action) {
-      case "create": return await createMember(admin, caller, body);
-      case "update": return await updateMember(admin, caller, body);
-      case "reset_password": return await resetPassword(admin, caller, body);
-      case "delete": return await deleteMember(admin, caller, body);
+      case "create": return await createMember(admin, actor, body);
+      case "update": return await updateMember(admin, actor, body);
+      case "reset_password": return await resetPassword(admin, actor, body);
+      case "delete": return await deleteMember(admin, actor, body);
       default: return json({ error: "Ação inválida." }, 400);
     }
   } catch (err) {

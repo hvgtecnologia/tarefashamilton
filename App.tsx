@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
-import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember } from './types';
+import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember, ProjectMember, ProjectRole } from './types';
 import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime, getInboxTasks } from './constants';
 import KanbanBoard from './components/KanbanBoard';
 import Sidebar from './components/Sidebar';
@@ -17,6 +17,8 @@ import TeamView from './components/TeamView';
 import DriveView from './components/DriveView';
 import ClientsView from './components/ClientsView';
 import TemplatesModal from './components/TemplatesModal';
+import ProjectPeopleModal from './components/ProjectPeopleModal';
+import MemberTaskModal from './components/MemberTaskModal';
 import TeamMemberModal, { TeamMemberModalMode } from './components/TeamMemberModal';
 import MemberApp from './components/MemberApp';
 import { TeamProvider } from './components/TeamContext';
@@ -27,10 +29,12 @@ import { clientNames } from './lib/clients';
 import { ProjectTemplate, planFromTemplate, creationOrder } from './lib/templates';
 import { COMPLETED_RETENTION_DAYS, isExpiredCompleted, unreferencedFilePaths } from './lib/retention';
 import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember, updateTeamMember } from './lib/team';
+import { listProjectMembers, setProjectMember, removeProjectMember } from './lib/access';
 import {
   getTasks, addTask as addTaskToStorage, updateTask as updateTaskInStorage,
   deleteTask as deleteTaskFromStorage,
   getCategories, addCategory as addCategoryToStorage, deleteCategory as deleteCategoryFromStorage,
+  setOwnerOverride,
   getProjects, addProject as addProjectToStorage, updateProject as updateProjectToStorage,
   deleteProject as deleteProjectFromStorage, getCurrentUserId, deleteAttachmentFiles, getTasksUpdatedSince
 } from './lib/storage';
@@ -55,9 +59,17 @@ const App: React.FC = () => {
   const [selectedUrgency, setSelectedUrgency] = useState<Urgency | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
-  const [teamRole, setTeamRole] = useState<'loading' | 'master' | 'member'>('loading');
+  const [teamRole, setTeamRole] = useState<'loading' | 'master' | 'member' | 'manager'>('loading');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamReady, setTeamReady] = useState(false);
+  // Quem está em cada projeto, e os projetos que o usuário logado administra (administrador de projeto)
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [adminProjectIds, setAdminProjectIds] = useState<string[]>([]);
+  const [peopleProjectId, setPeopleProjectId] = useState<string | null>(null);
+  // Cadastro de pessoa nova feito de dentro de um projeto (ela já entra nele)
+  const [createInProjectId, setCreateInProjectId] = useState<string | null>(null);
+  // Administrador abrindo uma tarefa de projeto que NÃO administra: só mexe no andamento, como membro
+  const [memberTask, setMemberTask] = useState<Task | null>(null);
   const [memberName, setMemberName] = useState('');
   const [teamModal, setTeamModal] = useState<TeamMemberModalMode | null>(null);
   const [purgeNotice, setPurgeNotice] = useState('');
@@ -133,16 +145,23 @@ const App: React.FC = () => {
           setTeamRole('member');
           return;
         }
+        const isManager = team.role === 'manager';
+        // Administrador de projeto: tudo que ele cria continua sendo do master
+        setOwnerOverride(isManager ? team.membership?.masterId || null : null);
+        setAdminProjectIds(team.adminProjectIds || []);
+        if (isManager) setMemberName(team.membership?.name || '');
         setTeamMembers(team.members);
         setTeamReady(team.ready);
-        setTeamRole('master');
+        setTeamRole(isManager ? 'manager' : 'master');
+        listProjectMembers().then(setProjectMembers).catch(() => { /* sem a V11: segue sem a parte de projetos */ });
 
         const loadedProjects = await getProjects();
         setProjects([...loadedProjects].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
 
         let loadedCategories = await getCategories();
         // Apenas recria as categorias padrão se for um usuário completamente novo (sem categorias e sem projetos cadastrados)
-        if (loadedCategories.length === 0 && loadedProjects.length === 0) {
+        // Só o master recria as categorias padrão: um administrador de projeto nunca cria categoria
+        if (!isManager && loadedCategories.length === 0 && loadedProjects.length === 0) {
           for (const cat of DEFAULT_CATEGORIES) {
             try {
               await addCategoryToStorage({ name: cat.name, color: cat.color });
@@ -161,7 +180,8 @@ const App: React.FC = () => {
         const legacyMap: Record<string, string> = {
           '1': 'Pessoal', '2': 'Áurea', '3': 'Tráfego Pago', '4': 'Consultoria IA'
         };
-        const fixed = await Promise.all(loadedTasks.map(async t => {
+        // A correção de categorias antigas também é do master (o administrador não é dono dessas tarefas)
+        const fixed = isManager ? loadedTasks : await Promise.all(loadedTasks.map(async t => {
           if (legacyIds.includes(t.category)) {
             const name = legacyMap[t.category];
             const correct = loadedCategories.find(c => c.name === name);
@@ -178,7 +198,8 @@ const App: React.FC = () => {
         lastSyncRef.current = fixed.reduce((max, t) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max), new Date(0).toISOString());
         setTasks(visibleTasks);
         setDeletedTasks(trashedTasks);
-        purgeExpiredCompleted(visibleTasks, trashedTasks);
+        // Apagar o histórico antigo é do master: o administrador não faz limpeza no que não é dele
+        if (!isManager) purgeExpiredCompleted(visibleTasks, trashedTasks);
       } catch (e) {
         console.error('Error loading data:', e);
         setTeamRole(role => (role === 'loading' ? 'master' : role));
@@ -407,10 +428,24 @@ const App: React.FC = () => {
   const sortMembers = (list: TeamMember[]) =>
     [...list].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 
-  const handleCreateMember = async (input: { name: string; username: string; password: string; phone: string }) => {
+  const handleCreateMember = async (input: { name: string; username: string; password: string; phone: string; project_id?: string }) => {
     const member = await createTeamMember(input);
     setTeamMembers(prev => sortMembers([...prev, member]));
+    // A função do servidor já colocou a pessoa no projeto; espelha aqui para a tela refletir na hora
+    if (input.project_id) {
+      setProjectMembers(prev => [...prev, { projectId: input.project_id!, userId: member.userId, role: 'member' }]);
+    }
     return member;
+  };
+
+  // Muda o papel de alguém num projeto (role null = tira do projeto) e espelha na tela
+  const handleProjectRole = async (projectId: string, userId: string, role: ProjectRole | null) => {
+    if (role === null) await removeProjectMember(projectId, userId);
+    else await setProjectMember(projectId, userId, role);
+    setProjectMembers(prev => {
+      const others = prev.filter(m => !(m.projectId === projectId && m.userId === userId));
+      return role === null ? others : [...others, { projectId, userId, role }];
+    });
   };
 
   const handleUpdateMember = async (memberId: string, input: { name: string; phone: string }) => {
@@ -521,6 +556,12 @@ const App: React.FC = () => {
   const addProject = async (name: string, description: string, color: string) => {
     try {
       const p = await addProjectToStorage({ name, description, color });
+      if (teamRole === 'manager') {
+        // quem cria vira administrador do que criou (o banco já fez isso; aqui espelhamos)
+        const me = await getCurrentUserId();
+        setAdminProjectIds(prev => [...prev, p.id]);
+        if (me) setProjectMembers(prev => [...prev, { projectId: p.id, userId: me, role: 'admin' }]);
+      }
       setProjects(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
     } catch (e) { console.error(e); }
   };
@@ -573,6 +614,10 @@ const App: React.FC = () => {
   const deleteProject = async (id: string) => {
     try {
       await deleteProjectFromStorage(id);
+      setProjectMembers(prev => prev.filter(m => m.projectId !== id));
+      setAdminProjectIds(prev => prev.filter(x => x !== id));
+      // Sem o projeto, o administrador deixa de enxergar as tarefas dele (continuam com o master)
+      if (teamRole === 'manager') setTasks(prev => prev.filter(t => t.projectId !== id));
       setProjects(prev => prev.filter(p => p.id !== id));
       setTasks(prev => prev.map(t => t.projectId === id ? { ...t, projectId: undefined } : t));
       if (openProjectId === id) setOpenProjectId(null);
@@ -631,6 +676,12 @@ const App: React.FC = () => {
   };
 
   const openTaskModal = (task: Task | null, defaults: { projectId?: string; status?: TaskStatus } = {}) => {
+    // Administrador de projeto abrindo tarefa que recebeu num projeto que NÃO administra: o banco só
+    // deixa mexer no andamento, então abre a tela de membro (e não o editor completo, que falharia).
+    if (task && teamRole === 'manager' && !(task.projectId && adminProjectIds.includes(task.projectId))) {
+      setMemberTask(task);
+      return;
+    }
     setEditingTask(task);
     setTaskModalDefaults(defaults);
     setIsTaskModalOpen(true);
@@ -672,7 +723,7 @@ const App: React.FC = () => {
   const openedProject = openProjectId ? projects.find(p => p.id === openProjectId) : null;
 
   return (
-    <TeamProvider value={{ members: teamMembers }}>
+    <TeamProvider value={{ members: teamMembers, role: teamRole === 'manager' ? 'manager' : 'master', projectMembers, adminProjectIds }}>
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden relative">
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
@@ -792,6 +843,9 @@ const App: React.FC = () => {
                   setProjects([]);
                   setTeamMembers([]);
                   setTeamReady(false);
+                  setProjectMembers([]);
+                  setAdminProjectIds([]);
+                  setOwnerOverride(null);
                   setTeamRole('loading');
                 }
               }}
@@ -830,6 +884,9 @@ const App: React.FC = () => {
                 onTaskClick={(task) => openTaskModal(task)}
                 onDeleteProject={() => deleteProject(openedProject.id)}
                 onEditProject={(updates) => updateProject(openedProject.id, updates)}
+                canManage={teamRole !== 'manager' || adminProjectIds.includes(openedProject.id)}
+                peopleCount={projectMembers.filter(m => m.projectId === openedProject.id).length}
+                onOpenPeople={() => setPeopleProjectId(openedProject.id)}
               />
             </div>
           ) : view === 'team' ? (
@@ -837,6 +894,8 @@ const App: React.FC = () => {
               members={teamMembers}
               tasks={tasks}
               ready={teamReady}
+              projects={projects}
+              projectMembers={projectMembers}
               onAddMember={() => setTeamModal({ kind: 'create' })}
               onResetPassword={(member) => setTeamModal({ kind: 'reset', member })}
               onEditMember={(member) => setTeamModal({ kind: 'edit', member })}
@@ -952,6 +1011,37 @@ const App: React.FC = () => {
         />
       )}
 
+      {peopleProjectId && (() => {
+        const project = projects.find(p => p.id === peopleProjectId);
+        if (!project) return null;
+        return (
+          <ProjectPeopleModal
+            project={project}
+            team={teamMembers}
+            projectMembers={projectMembers.filter(m => m.projectId === project.id)}
+            onSetRole={(userId, role) => handleProjectRole(project.id, userId, role)}
+            onRemove={(userId) => handleProjectRole(project.id, userId, null)}
+            onCreateNew={() => { setCreateInProjectId(project.id); setTeamModal({ kind: 'create' }); }}
+            onClose={() => setPeopleProjectId(null)}
+          />
+        );
+      })()}
+
+      {memberTask && (
+        <MemberTaskModal
+          task={memberTask}
+          category={categories.find(c => c.id === memberTask.category)}
+          project={memberTask.projectId ? projects.find(p => p.id === memberTask.projectId) : undefined}
+          onClose={() => setMemberTask(null)}
+          onSave={async (updates) => {
+            const updated = await updateTaskInStorage(memberTask.id, updates);
+            if (!updated) return false;
+            setTasks(prev => prev.map(t => (t.id === memberTask.id ? updated : t)));
+            return true;
+          }}
+        />
+      )}
+
       {isTemplatesOpen && (
         <TemplatesModal
           onClose={() => setIsTemplatesOpen(false)}
@@ -977,10 +1067,14 @@ const App: React.FC = () => {
       {teamModal && (
         <TeamMemberModal
           mode={teamModal}
-          onClose={() => setTeamModal(null)}
+          onClose={() => { setTeamModal(null); setCreateInProjectId(null); }}
           onCreate={handleCreateMember}
           onReset={resetTeamMemberPassword}
           onUpdate={handleUpdateMember}
+          projects={teamRole === 'master' ? projects : undefined}
+          projectMembers={projectMembers}
+          onChangeProjectRole={teamRole === 'master' ? handleProjectRole : undefined}
+          createInProject={createInProjectId ? projects.find(p => p.id === createInProjectId) : undefined}
         />
       )}
     </div>
