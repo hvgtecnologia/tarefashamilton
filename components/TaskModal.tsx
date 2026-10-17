@@ -8,6 +8,7 @@ import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, b
 import { uploadAttachment } from '../lib/storage';
 import { useTeam } from './TeamContext';
 import DriveLinkChips from './DriveLinkChips';
+import { AttachmentDownloadButton, DownloadAllButton } from './AttachmentDownload';
 import DrivePickerModal from './DrivePickerModal';
 import { hasWhatsapp, whatsappLink, newTaskMessage } from '../lib/team';
 
@@ -315,12 +316,15 @@ const TaskModal: React.FC<TaskModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Anexos</h4>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center"
-                >
-                  <Plus className="w-3 h-3 mr-1" /> Anexar
-                </button>
+                <div className="flex items-center gap-4">
+                  {attachments.length > 1 && <DownloadAllButton attachments={attachments} zipName={title} />}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Anexar
+                  </button>
+                </div>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -347,6 +351,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
                         <span className="text-[10px] font-medium text-slate-600 text-center line-clamp-2">{att.name}</span>
                       </div>
                     )}
+                    <AttachmentDownloadButton attachment={att} />
                     <button
                       onClick={() => removeAttachment(att.id)}
                       className="absolute top-1 right-1 bg-white/90 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500 hover:text-white"
@@ -707,23 +712,25 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
             {attachments.length > 0 && (
               <div>
-                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center">
-                  <Paperclip className="w-4 h-4 mr-2" />
-                  Anexos ({attachments.length})
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-700 flex items-center">
+                    <Paperclip className="w-4 h-4 mr-2" />
+                    Anexos ({attachments.length})
+                  </h3>
+                  <DownloadAllButton attachments={attachments} zipName={title} />
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {attachments.map(att => (
-                    <div key={att.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                    <div key={att.id} className="relative group bg-white border border-slate-200 rounded-lg overflow-hidden">
                       {att.type === 'image' ? (
                         <img src={att.url} className="w-full aspect-video object-cover" alt={att.name} />
                       ) : (
                         <div className="aspect-video flex flex-col items-center justify-center bg-slate-50 p-3">
                           <FileText className="w-10 h-10 text-rose-500 mb-2" />
-                          <a href={att.url} download={att.name} className="text-xs font-medium text-blue-600 hover:underline truncate max-w-full px-2">
-                            {att.name}
-                          </a>
+                          <span className="text-xs font-medium text-slate-600 truncate max-w-full px-2">{att.name}</span>
                         </div>
                       )}
+                      <AttachmentDownloadButton attachment={att} className="top-2 right-2" />
                     </div>
                   ))}
                 </div>

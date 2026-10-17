@@ -7,6 +7,7 @@ import { Task, Category, Project, TaskAttachment, ChecklistItem, TaskStatus } fr
 import { URGENCY_CONFIG, STATUS_CONFIG, formatPrettyDate, isOverdue } from '../constants';
 import { uploadAttachment } from '../lib/storage';
 import DriveLinkChips from './DriveLinkChips';
+import { AttachmentDownloadButton, DownloadAllButton } from './AttachmentDownload';
 
 interface MemberTaskModalProps {
   task: Task;
@@ -201,6 +202,7 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
                   <Paperclip className="w-3 h-3" />
                   Anexos
                 </h4>
+                {attachments.length > 1 && <DownloadAllButton attachments={attachments} zipName={task.title} />}
                 {!readOnly && (
                   <>
                     <button
@@ -238,6 +240,7 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
                           </div>
                         )}
                       </a>
+                      <AttachmentDownloadButton attachment={att} />
                       {!readOnly && !originalAttachmentIds.current.has(att.id) && (
                         <button
                           onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}

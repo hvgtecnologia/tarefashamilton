@@ -763,7 +763,8 @@ const App: React.FC = () => {
                 onAddTask={(data) => addTask({
                   ...data,
                   projectId: openedProject.id,
-                  dayOfWeek: 'inbox',
+                  // Etapa com data é tarefa agendada; só a sem data nasce na caixa de entrada.
+                  dayOfWeek: data.scheduledDate ? 'monday' : 'inbox',
                 })}
                 onUpdateTask={updateTask}
                 onCompleteTask={completeTask}

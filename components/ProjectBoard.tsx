@@ -6,6 +6,7 @@ import { STATUS_CONFIG, NATIVE_STATUS_ORDER, isOverdue, CustomStatus, loadCustom
 import TaskCard from './TaskCard';
 import Tooltip from './Tooltip';
 import StatusManager from './StatusManager';
+import ProjectSteps from './ProjectSteps';
 
 interface ProjectBoardProps {
   project: Project;
@@ -13,7 +14,7 @@ interface ProjectBoardProps {
   categories: Category[];
   projects: Project[];
   onBack: () => void;
-  onAddTask: (data: { title: string; status: TaskStatus; urgency?: Urgency }) => void;
+  onAddTask: (data: Partial<Task>) => void;
   onUpdateTask: (id: string, updates: Partial<Task>) => void;
   onCompleteTask: (id: string) => void;
   onTaskClick: (task: Task) => void;
@@ -26,6 +27,8 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   onBack, onAddTask, onUpdateTask, onCompleteTask, onTaskClick,
   onDeleteProject, onEditProject,
 }) => {
+  // Quadro por status, ou cronograma de etapas com data/horário/responsável
+  const [viewMode, setViewMode] = useState<'board' | 'steps'>('board');
   const [quickAddCol, setQuickAddCol] = useState<string | null>(null);
   const [quickAddText, setQuickAddText] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -171,6 +174,22 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
         </div>
       </div>
 
+      {/* Quadro | Etapas */}
+      <div className="bg-white border-b px-4 md:px-6 flex gap-1 flex-shrink-0">
+        {([['board', 'Quadro'], ['steps', 'Etapas']] as const).map(([mode, label]) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`px-3 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+              viewMode === mode ? 'text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+            style={viewMode === mode ? { borderColor: project.color } : undefined}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Progress bar */}
       <div className="h-1 bg-slate-100 flex-shrink-0">
         <div className="h-full transition-all" style={{ width: `${progress}%`, backgroundColor: project.color }} />
@@ -183,7 +202,21 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
         </div>
       )}
 
+      {viewMode === 'steps' && (
+        <div className="flex-1 overflow-y-auto">
+          <ProjectSteps
+            project={project}
+            tasks={projectTasks}
+            onAddTask={onAddTask}
+            onUpdateTask={onUpdateTask}
+            onCompleteTask={onCompleteTask}
+            onTaskClick={onTaskClick}
+          />
+        </div>
+      )}
+
       {/* Kanban Columns */}
+      {viewMode === 'board' && (
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6">
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 h-full min-w-max">
@@ -326,6 +359,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
           </div>
         </DragDropContext>
       </div>
+      )}
 
       {/* Settings Modal */}
       {showSettings && (
