@@ -3,6 +3,7 @@ import { Users, UserPlus, KeyRound, Trash2, RefreshCw, Send, CheckCircle2, Alert
 import { Task, TeamMember } from '../types';
 import { todayISO, isOverdue, formatPrettyDate, sortTasksByTime, compareByTime } from '../constants';
 import { hasWhatsapp, whatsappLink, reminderMessage } from '../lib/team';
+import { computeWorkload } from '../lib/workload';
 
 interface TeamViewProps {
   members: TeamMember[];
@@ -54,6 +55,13 @@ const TeamView: React.FC<TeamViewProps> = ({
       return { member, open: [...overdue, ...dated, ...undated], overdueCount: overdue.length, doneRecently };
     });
   }, [members, tasks]);
+
+  // Quanto cada pessoa tem de trabalho aberto (inclui você, com o que não foi delegado)
+  const workload = useMemo(
+    () => computeWorkload(tasks, members.map(m => ({ userId: m.userId, name: m.name })), today),
+    [tasks, members, today]
+  );
+  const maxOpen = Math.max(1, ...workload.map(w => w.open));
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -124,6 +132,36 @@ const TeamView: React.FC<TeamViewProps> = ({
             </ol>
           </div>
         </div>
+      )}
+
+      {/* Carga da equipe */}
+      {ready && members.length > 0 && (
+        <section className="bg-white border border-slate-200 rounded-2xl p-5">
+          <h2 className="font-bold text-slate-800 mb-3">Carga da semana</h2>
+          <ul className="space-y-2.5">
+            {workload.map(w => (
+              <li key={w.key} className="flex items-center gap-3">
+                <span className={`w-28 flex-shrink-0 text-sm truncate ${w.isMe ? 'font-semibold text-slate-500' : 'font-bold text-slate-700'}`}>{w.name}</span>
+                <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden flex" title={`${w.open} abertas`}>
+                  <div className="h-full bg-rose-400" style={{ width: `${(w.overdue / maxOpen) * 100}%` }} />
+                  <div className="h-full bg-blue-500" style={{ width: `${(w.today / maxOpen) * 100}%` }} />
+                  <div className="h-full bg-blue-300" style={{ width: `${(w.next7 / maxOpen) * 100}%` }} />
+                  <div className="h-full bg-slate-300" style={{ width: `${(w.undated / maxOpen) * 100}%` }} />
+                </div>
+                <span className="w-24 flex-shrink-0 text-right text-xs text-slate-500">
+                  <strong className="text-slate-700">{w.open}</strong> aberta{w.open === 1 ? '' : 's'}
+                  {w.overdue > 0 && <span className="text-rose-600 font-bold"> · {w.overdue} atras.</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-slate-400">
+            <span><i className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />atrasadas</span>
+            <span><i className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />hoje</span>
+            <span><i className="inline-block w-2 h-2 rounded-full bg-blue-300 mr-1" />próximos 7 dias</span>
+            <span><i className="inline-block w-2 h-2 rounded-full bg-slate-300 mr-1" />sem data</span>
+          </p>
+        </section>
       )}
 
       {/* Conclusões novas da equipe */}

@@ -72,6 +72,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
               </span>
             ) : null}
 
+            {task.client && (
+              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[110px]" title={`Cliente: ${task.client}`}>
+                {task.client}
+              </span>
+            )}
+
             {/* Status badge */}
             {task.status && task.status !== 'todo' && (
               statusIsCustom ? (

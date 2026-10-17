@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Plus, Clock, Calendar, Users, ChevronsRight, AlertCircle } from 'lucide-react';
+import { Check, Plus, Clock, Calendar, Users, ChevronsRight, AlertCircle, Lock, MessageCircle, LayoutTemplate } from 'lucide-react';
 import { Project, Task, Urgency } from '../types';
 import { todayISO, isOverdue, formatPrettyDate } from '../constants';
-import { sortSteps, shiftFollowing } from '../lib/steps';
+import { sortSteps, shiftFollowing, waitingFor } from '../lib/steps';
+import { buildTemplateSteps, createTemplate } from '../lib/templates';
+import { hasWhatsapp, whatsappLink, releasedMessage } from '../lib/team';
 import { useTeam, firstName } from './TeamContext';
 
 interface ProjectStepsProps {
@@ -32,23 +34,33 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
+  const [dependsOn, setDependsOn] = useState('');
   const [showDescription, setShowDescription] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  // Todas as etapas do projeto são do mesmo cliente: a nova herda sem perguntar.
+  const projectClient = useMemo(() => tasks.find(t => t.client)?.client, [tasks]);
 
   const done = steps.filter(s => s.isCompleted).length;
 
   const add = () => {
     if (!title.trim()) return;
     const when = date || lastDate || undefined;
+    const prev = dependsOn ? steps.find(s => s.id === dependsOn) : undefined;
     onAddTask({
+      client: projectClient,
+      dependsOn: prev ? prev.id : undefined,
+      // Etapa que depende de outra ainda aberta nasce bloqueada; o banco libera quando a anterior for concluída
+      ...(prev && !prev.isCompleted ? { status: 'blocked' as const } : {}),
       title: title.trim(),
       description: description.trim(),
-      status: 'todo',
       urgency: Urgency.MEDIUM,
       scheduledDate: when,
       scheduledTime: time || undefined,
       dayOfWeek: when ? 'monday' : 'inbox',
       assignedTo: assignedTo || undefined,
     });
+    setDependsOn('');
     setTitle('');
     setDescription('');
     setTime('');
@@ -57,8 +69,23 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
   };
 
   const toggle = (step: Task) => {
-    if (step.isCompleted) onUpdateTask(step.id, { status: 'todo' });
-    else onCompleteTask(step.id);
+    if (step.isCompleted) { onUpdateTask(step.id, { status: 'todo' }); return; }
+    const prev = waitingFor(step, tasks);
+    if (prev && !confirm(`A etapa "${prev.title}" ainda não foi concluída.\n\nConcluir esta mesmo assim?`)) return;
+    onCompleteTask(step.id);
+  };
+
+  const saveAsTemplate = async () => {
+    if (steps.length === 0) return;
+    const name = prompt('Nome do modelo:', project.name);
+    if (!name || !name.trim()) return;
+    try {
+      await createTemplate({ name: name.trim(), description: project.description, color: project.color, steps: buildTemplateSteps(steps) });
+      setNotice(`Modelo "${name.trim()}" salvo. Use "Projeto a partir de modelo" no menu lateral.`);
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+    window.setTimeout(() => setNotice(''), 6000);
   };
 
   const postpone = (step: Task) => {
@@ -78,7 +105,17 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
             {steps.length === 0 ? 'nenhuma ainda' : `${done} de ${steps.length} concluída${done === 1 ? '' : 's'}`}
           </span>
         </h2>
+        {steps.length > 0 && (
+          <button
+            onClick={saveAsTemplate}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600"
+            title="Guarda estas etapas, com as datas relativas, para criar o próximo projeto parecido"
+          >
+            <LayoutTemplate className="w-3.5 h-3.5" /> Salvar como modelo
+          </button>
+        )}
       </div>
+      {notice && <div className="mb-3 px-3 py-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">{notice}</div>}
 
       {/* Nova etapa */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 mb-5 space-y-2">
@@ -134,6 +171,22 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
             </label>
           )}
 
+          {steps.length > 0 && (
+            <label className="flex items-center gap-1 text-[11px] font-bold text-slate-400" title="A etapa nasce bloqueada e é liberada sozinha quando a escolhida for concluída">
+              <Lock className="w-3 h-3" />
+              <select
+                value={dependsOn}
+                onChange={e => setDependsOn(e.target.value)}
+                className="text-xs font-normal text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none max-w-[170px]"
+              >
+                <option value="">Começa já</option>
+                {steps.map((st, idx) => (
+                  <option key={st.id} value={st.id}>Depois da {idx + 1}. {st.title.slice(0, 28)}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <button
             type="button"
             onClick={() => setShowDescription(v => !v)}
@@ -164,6 +217,10 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
           {steps.map((step, i) => {
             const late = !step.isCompleted && !!step.scheduledDate && isOverdue(step.scheduledDate);
             const member = findMember(step.assignedTo);
+            const waiting = waitingFor(step, tasks);
+            const predecessor = step.dependsOn ? tasks.find(t => t.id === step.dependsOn) : undefined;
+            // Liberada: tinha dependência, a anterior já foi concluída, e ainda não foi feita
+            const released = !!predecessor && predecessor.isCompleted && !step.isCompleted;
             return (
               <li key={step.id} className="group relative flex gap-3 pb-4 last:pb-0">
                 {i < steps.length - 1 && <span className="absolute left-[15px] top-8 bottom-0 w-px bg-slate-200" />}
@@ -219,6 +276,26 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
                       <span className="flex items-center gap-1 font-semibold text-violet-600">
                         <Users className="w-3 h-3" /> {firstName(member.name)}
                       </span>
+                    )}
+                    {waiting && (
+                      <span className="flex items-center gap-1 font-semibold text-amber-600" title="Libera sozinha quando a anterior for concluída">
+                        <Lock className="w-3 h-3" /> Aguardando: {waiting.title.slice(0, 32)}
+                      </span>
+                    )}
+                    {released && (
+                      <span className="font-semibold text-emerald-600">Liberada</span>
+                    )}
+                    {released && member && hasWhatsapp(member) && (
+                      <a
+                        href={whatsappLink(member.phone, releasedMessage(member, step, predecessor?.title))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 font-semibold text-emerald-700 hover:underline"
+                        title="Abre o WhatsApp com o aviso pronto"
+                      >
+                        <MessageCircle className="w-3 h-3" /> Avisar {firstName(member.name)}
+                      </a>
                     )}
                   </div>
                 </div>

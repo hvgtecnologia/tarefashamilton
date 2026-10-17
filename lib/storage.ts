@@ -128,6 +128,8 @@ const rowToTask = (task: any): Task => ({
     deletedAt: task.deleted_at,
     attachments: task.attachments || [],
     driveLinks: Array.isArray(task.drive_links) ? task.drive_links : [],
+    client: task.client || undefined,
+    dependsOn: task.depends_on || undefined,
     assignedTo: task.assigned_to || undefined,
     completedBy: task.completed_by || undefined,
     completedByName: task.completed_by_name || undefined,
@@ -206,12 +208,24 @@ export async function addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>
         if (task.assignedTo) payload.assigned_to = task.assignedTo;
         // Idem para a V8: só manda a coluna quando realmente há algo do Drive anexado
         if (task.driveLinks && task.driveLinks.length > 0) payload.drive_links = task.driveLinks;
+        // Idem para a V10 (cliente e dependência entre etapas)
+        if (task.client) payload.client = task.client;
+        if (task.dependsOn) payload.depends_on = task.dependsOn;
 
         let { data, error } = await supabase
             .from('tasks')
             .insert([payload])
             .select()
             .single();
+
+        // V10 ainda não rodou: cria a tarefa sem cliente/dependência em vez de falhar inteira.
+        if (error && /client|depends_on/i.test(error.message || '')) {
+            delete payload.client;
+            delete payload.depends_on;
+            const retry = await supabase.from('tasks').insert([payload]).select().single();
+            data = retry.data;
+            error = retry.error;
+        }
 
         let fellBackToMeta = false;
         // Fallback caso colunas novas ainda não existam no banco
@@ -297,6 +311,9 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
         if (updates.completionSeen !== undefined) dbUpdates.completion_seen = updates.completionSeen;
         if (updates.memberNotes !== undefined) dbUpdates.member_notes = updates.memberNotes;
         if (updates.driveLinks !== undefined) dbUpdates.drive_links = updates.driveLinks;
+        // Cliente e dependência precisam poder ser apagados (mesma regra de data/horário/prazo)
+        if ('client' in updates) dbUpdates.client = updates.client || null;
+        if ('dependsOn' in updates) dbUpdates.depends_on = updates.dependsOn ?? null;
         if (updates.nextSpawned !== undefined) dbUpdates.next_spawned = updates.nextSpawned;
 
         let { data, error } = await supabase
@@ -307,7 +324,9 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
             .single();
 
         let fellBackToMeta = false;
-        if (error && /status|checklist|recurrence|due_date|scheduled_time|drive_links/i.test(error.message || '')) {
+        if (error && /status|checklist|recurrence|due_date|scheduled_time|drive_links|client|depends_on/i.test(error.message || '')) {
+            delete dbUpdates.client;
+            delete dbUpdates.depends_on;
             delete dbUpdates.status;
             delete dbUpdates.checklist;
             delete dbUpdates.recurrence;

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
   X, CheckSquare, Square, Paperclip, FileText, Plus, CheckCircle2, Calendar, Clock, Flag,
-  FolderKanban, Tag, Save, AlertCircle, RotateCcw,
+  FolderKanban, Tag, Save, AlertCircle, RotateCcw, Lock,
 } from 'lucide-react';
 import { Task, Category, Project, TaskAttachment, ChecklistItem, TaskStatus } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, formatPrettyDate, isOverdue } from '../constants';
@@ -22,6 +22,8 @@ const MEMBER_STATUSES: TaskStatus[] = ['todo', 'doing', 'blocked'];
 
 const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, project, onClose, onSave, onReopen }) => {
   const readOnly = task.isCompleted;
+  // Etapa que depende de outra ainda aberta: o banco a libera sozinho quando a anterior for concluída.
+  const waiting = !task.isCompleted && task.status === 'blocked' && !!task.dependsOn;
   const [status, setStatus] = useState<TaskStatus>(task.status && task.status !== 'done' ? task.status : 'todo');
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task.checklist || []);
   const [memberNotes, setMemberNotes] = useState(task.memberNotes || '');
@@ -71,7 +73,9 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
     setSaving(true);
     setError('');
     const updates: Partial<Task> = { status, checklist, memberNotes: memberNotes.trim(), attachments };
-    if (complete) {
+    // Enquanto espera a anterior, o andamento não sai de "Bloqueada" por aqui
+    if (waiting) updates.status = 'blocked';
+    if (complete && !waiting) {
       updates.status = 'done';
       updates.isCompleted = true;
       updates.completedAt = new Date().toISOString();
@@ -274,8 +278,18 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
             )}
           </div>
 
+          {waiting && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
+              <Lock className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Aguardando a etapa anterior</p>
+                <p className="text-xs text-amber-700 mt-0.5">Esta etapa libera sozinha quando a anterior for concluída. Você já pode ver os detalhes e deixar anotações.</p>
+              </div>
+            </div>
+          )}
+
           {/* Andamento */}
-          {!readOnly && (
+          {!readOnly && !waiting && (
             <div>
               <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Andamento</h4>
               <div className="grid grid-cols-3 gap-1.5">
@@ -327,7 +341,8 @@ const MemberTaskModal: React.FC<MemberTaskModalProps> = ({ task, category, proje
             </button>
             <button
               onClick={() => submit(true)}
-              disabled={saving || uploading}
+              disabled={saving || uploading || waiting}
+              title={waiting ? 'Só dá para concluir depois que a etapa anterior for concluída' : undefined}
               className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-emerald-500/30"
             >
               <CheckCircle2 className="w-4 h-4" />

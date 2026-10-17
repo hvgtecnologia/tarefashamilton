@@ -3,7 +3,7 @@ import { Category, Urgency, Project, View } from '../types';
 import { URGENCY_CONFIG, isOverdue } from '../constants';
 import {
   LayoutDashboard, Sun, BarChart3, Calendar, Columns,
-  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2, Users, HardDrive
+  Plus, Circle, History, X, Trash2, FolderKanban, Sparkles, Share2, Users, HardDrive, Building2, LayoutTemplate
 } from 'lucide-react';
 import { useTeam } from './TeamContext';
 
@@ -31,6 +31,7 @@ interface SidebarProps {
   onOpenProject: (id: string) => void;
   onOpenHistory: () => void;
   onOpenCalendarSync: () => void;
+  onOpenTemplates: () => void;
   onClose?: () => void;
   onQuickAdd: () => void;
 }
@@ -41,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedUrgency, setSelectedUrgency, selectedCategory, setSelectedCategory,
   selectedAssignee, setSelectedAssignee, teamBadge,
   addCategory, deleteCategory, addProject, deleteProject,
-  onOpenProject, onOpenHistory, onOpenCalendarSync, onClose, onQuickAdd
+  onOpenProject, onOpenHistory, onOpenCalendarSync, onOpenTemplates, onClose, onQuickAdd
 }) => {
   const { members } = useTeam();
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -164,6 +165,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => { onOpenCalendarSync(); onClose?.(); }}
               />
               <NavBtn
+                icon={<Building2 className="w-4 h-4" />}
+                label="Clientes"
+                active={view === 'clients' && !openProjectId}
+                onClick={() => { setView('clients'); onClose?.(); }}
+              />
+              <NavBtn
                 icon={<HardDrive className="w-4 h-4" />}
                 label="Meu Drive"
                 active={view === 'drive' && !openProjectId}
@@ -176,9 +183,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2 ml-2">
               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Negócios / Projetos</h3>
-              <button onClick={() => setIsAddingProject(true)} className="p-1 hover:bg-slate-100 rounded">
-                <Plus className="w-3 h-3 text-slate-500" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button onClick={() => { onOpenTemplates(); onClose?.(); }} className="p-1 hover:bg-slate-100 rounded" title="Projeto a partir de um modelo">
+                  <LayoutTemplate className="w-3 h-3 text-slate-500" />
+                </button>
+                <button onClick={() => setIsAddingProject(true)} className="p-1 hover:bg-slate-100 rounded" title="Novo projeto">
+                  <Plus className="w-3 h-3 text-slate-500" />
+                </button>
+              </div>
             </div>
             <div className="space-y-0.5">
               {projects.length === 0 && (

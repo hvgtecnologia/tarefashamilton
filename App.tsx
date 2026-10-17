@@ -15,11 +15,16 @@ import { CalendarView } from './components/CalendarView';
 import { CalendarSyncModal } from './components/CalendarSyncModal';
 import TeamView from './components/TeamView';
 import DriveView from './components/DriveView';
+import ClientsView from './components/ClientsView';
+import TemplatesModal from './components/TemplatesModal';
 import TeamMemberModal, { TeamMemberModalMode } from './components/TeamMemberModal';
 import MemberApp from './components/MemberApp';
 import { TeamProvider } from './components/TeamContext';
 import { LoginScreen } from './components/LoginScreen';
 import { buildRecurringClone } from './lib/recurrence';
+import { applyRelease } from './lib/steps';
+import { clientNames } from './lib/clients';
+import { ProjectTemplate, planFromTemplate, creationOrder } from './lib/templates';
 import { COMPLETED_RETENTION_DAYS, isExpiredCompleted, unreferencedFilePaths } from './lib/retention';
 import { loadTeamContext, createTeamMember, resetTeamMemberPassword, deleteTeamMember, updateTeamMember } from './lib/team';
 import {
@@ -42,6 +47,7 @@ const App: React.FC = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isCalendarSyncOpen, setIsCalendarSyncOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [quickAddDefaults, setQuickAddDefaults] = useState<{ projectId?: string; date?: string; assignedTo?: string }>({});
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskModalDefaults, setTaskModalDefaults] = useState<{ projectId?: string; status?: TaskStatus }>({});
@@ -276,6 +282,8 @@ const App: React.FC = () => {
         recurrence: data.recurrence || 'none',
         attachments: data.attachments || [],
         driveLinks: data.driveLinks || [],
+        client: data.client || undefined,
+        dependsOn: data.dependsOn || undefined,
         assignedTo: data.assignedTo || undefined,
         isCompleted: false,
       });
@@ -303,7 +311,15 @@ const App: React.FC = () => {
 
     try {
       await updateTaskInStorage(id, finalUpdates);
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, ...finalUpdates, updatedAt: new Date().toISOString() } : t));
+      setTasks(prev => {
+        const next = prev.map(t => t.id === id ? { ...t, ...finalUpdates, updatedAt: new Date().toISOString() } : t);
+        // Concluir/reabrir uma etapa libera (ou volta a bloquear) as que dependem dela. O banco faz o
+        // mesmo por gatilho; aqui só espelhamos para a tela refletir na hora.
+        if (current && finalUpdates.isCompleted !== undefined && finalUpdates.isCompleted !== current.isCompleted) {
+          return applyRelease(next, id, finalUpdates.isCompleted);
+        }
+        return next;
+      });
 
       // Recria a próxima ocorrência ao concluir uma tarefa recorrente, qualquer que tenha sido o caminho usado para concluí-la.
       // Só uma vez por tarefa: reabrir e concluir de novo não cria uma segunda cópia da próxima ocorrência.
@@ -509,6 +525,44 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
+  // Cria o projeto e todas as etapas do modelo, com as datas calculadas a partir do início.
+  // As etapas são criadas em ordem de dependência: cada uma precisa do id da anterior.
+  const createProjectFromTemplate = async (
+    template: ProjectTemplate,
+    options: { name: string; startDate: string; client: string },
+  ) => {
+    const project = await addProjectToStorage({ name: options.name, description: template.description, color: template.color });
+    setProjects(prev => [...prev, project].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+
+    const planned = planFromTemplate(template.steps, options.startDate);
+    const { order, dependsOn } = creationOrder(template.steps);
+    const createdIds = new Map<number, string>();
+
+    for (const i of order) {
+      const step = planned[i];
+      const depIndex = dependsOn[i];
+      const depId = depIndex !== undefined ? createdIds.get(depIndex) : undefined;
+      // Quem já saiu da equipe não recebe a etapa: ela fica com você
+      const assignee = step.assignedTo && teamMembers.some(m => m.userId === step.assignedTo) ? step.assignedTo : undefined;
+      const created = await addTask({
+        title: step.title,
+        description: step.description,
+        projectId: project.id,
+        scheduledDate: step.scheduledDate,
+        scheduledTime: step.time,
+        dayOfWeek: step.scheduledDate ? 'monday' : 'inbox',
+        assignedTo: assignee,
+        client: options.client || undefined,
+        dependsOn: depId,
+        status: depId ? 'blocked' : 'todo',
+      });
+      if (created) createdIds.set(i, created.id);
+    }
+
+    setView('project');
+    setOpenProjectId(project.id);
+  };
+
   const updateProject = async (id: string, updates: Partial<Project>) => {
     try {
       const updated = await updateProjectToStorage(id, updates);
@@ -527,11 +581,15 @@ const App: React.FC = () => {
 
   // ============ Filtered & derived ============
 
+  // Clientes já usados, para sugerir ao digitar nos formulários
+  const clientList = useMemo(() => clientNames(tasks), [tasks]);
+
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
       const matchesSearch = !searchTerm ||
         t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.description.toLowerCase().includes(searchTerm.toLowerCase());
+        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.client || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesUrgency = !selectedUrgency || t.urgency === selectedUrgency;
       const matchesCategory = !selectedCategory || t.category === selectedCategory;
       const matchesAssignee = !selectedAssignee || (selectedAssignee === 'me' ? !t.assignedTo : t.assignedTo === selectedAssignee);
@@ -648,6 +706,7 @@ const App: React.FC = () => {
           addProject={addProject}
           deleteProject={deleteProject}
           onOpenProject={(id) => setOpenProjectId(id)}
+          onOpenTemplates={() => setIsTemplatesOpen(true)}
           onOpenHistory={() => setIsHistoryOpen(true)}
           onOpenCalendarSync={() => setIsCalendarSyncOpen(true)}
           onClose={() => setIsSidebarOpen(false)}
@@ -815,6 +874,8 @@ const App: React.FC = () => {
               onDayClick={handleDayClick}
               onTaskClick={(task) => openTaskModal(task)}
             />
+          ) : view === 'clients' ? (
+            <ClientsView tasks={tasks} onOpenTask={(task) => openTaskModal(task)} />
           ) : view === 'drive' ? (
             <DriveView />
           ) : (
@@ -845,6 +906,7 @@ const App: React.FC = () => {
       {/* Modais */}
       {isTaskModalOpen && (
         <TaskModal
+          clients={clientList}
           task={editingTask}
           categories={categories}
           projects={projects}
@@ -867,6 +929,7 @@ const App: React.FC = () => {
 
       {isQuickAddOpen && (
         <QuickAdd
+          clients={clientList}
           categories={categories}
           projects={projects}
           defaultProjectId={quickAddDefaults.projectId}
@@ -886,6 +949,14 @@ const App: React.FC = () => {
           onRestore={restoreTask}
           onRestoreDeleted={restoreDeletedTask}
           onPermanentDelete={permanentlyDeleteTask}
+        />
+      )}
+
+      {isTemplatesOpen && (
+        <TemplatesModal
+          onClose={() => setIsTemplatesOpen(false)}
+          onCreate={createProjectFromTemplate}
+          clients={clientList}
         />
       )}
 

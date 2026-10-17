@@ -74,6 +74,10 @@ export interface Task {
   deletedAt?: string;
   attachments: TaskAttachment[];
   driveLinks?: DriveLink[];
+  // Cliente a quem a tarefa pertence (texto livre). Alimenta a tela Clientes.
+  client?: string;
+  // Etapa que precisa ser concluída antes desta. Enquanto isso, esta fica com status 'blocked'.
+  dependsOn?: string;
   // Equipe: responsável (id do usuário do membro; null limpa a delegação), quem concluiu e retorno do membro
   assignedTo?: string | null;
   completedBy?: string;
@@ -94,7 +98,7 @@ export interface TeamMember {
   createdAt?: string;
 }
 
-export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team' | 'drive';
+export type View = 'today' | 'dashboard' | 'week' | 'calendar' | 'project' | 'team' | 'drive' | 'clients';
 
 export interface DriveFolder {
   id: string;

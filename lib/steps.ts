@@ -43,3 +43,32 @@ export function shiftFollowing(
     .filter(s => s.scheduledDate && !s.isCompleted)
     .map(s => ({ id: s.id, scheduledDate: shiftDate(s.scheduledDate as string, days) }));
 }
+
+// ---------- Dependência entre etapas ----------
+
+// A etapa está esperando a anterior? (tem dependência e a anterior ainda não foi concluída)
+export function waitingFor(step: Task, all: Task[]): Task | undefined {
+  if (!step.dependsOn || step.isCompleted) return undefined;
+  const prev = all.find(t => t.id === step.dependsOn);
+  return prev && !prev.isCompleted ? prev : undefined;
+}
+
+// Espelha no app o que o gatilho do banco faz (tasks_release_dependents), para a tela refletir a
+// liberação na hora, sem esperar a próxima atualização. Concluiu: quem esperava passa a "A fazer".
+// Reabriu: quem ainda não começou volta a esperar.
+export function applyRelease(tasks: Task[], changedId: string, nowCompleted: boolean): Task[] {
+  return tasks.map(t => {
+    if (t.dependsOn !== changedId || t.isCompleted) return t;
+    if (nowCompleted && t.status === 'blocked') return { ...t, status: 'todo' };
+    if (!nowCompleted && t.status === 'todo') return { ...t, status: 'blocked' };
+    return t;
+  });
+}
+
+// Opções de "libera depois de": só etapas ANTERIORES no cronograma (nunca a própria nem as que vêm
+// depois), o que impede ciclo na origem.
+export function dependencyCandidates(steps: Task[], stepId: string): Task[] {
+  const ordered = sortSteps(steps);
+  const idx = ordered.findIndex(s => s.id === stepId);
+  return idx === -1 ? ordered : ordered.slice(0, idx);
+}

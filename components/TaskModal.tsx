@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Trash2, FileText, Plus, Calendar, Save, Edit3, Eye, Paperclip,
-  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle, HardDrive, Clock
+  CheckSquare, Square, Repeat, Flag, Tag, FolderKanban, AlertCircle, GripVertical, Users, MessageCircle, HardDrive, Clock, Building2
 } from 'lucide-react';
 import { Task, Category, Urgency, TaskAttachment, Project, ChecklistItem, TaskStatus, Recurrence, DriveLink } from '../types';
 import { URGENCY_CONFIG, STATUS_CONFIG, RECURRENCE_LABELS, loadCustomStatuses, buildAllStatuses } from '../constants';
@@ -21,12 +21,14 @@ interface TaskModalProps {
   onClose: () => void;
   onSave: (data: Partial<Task>) => void;
   onDelete: (id: string) => void;
+  // Clientes já usados, para sugerir ao digitar
+  clients?: string[];
 }
 
 type ViewMode = 'edit' | 'work';
 
 const TaskModal: React.FC<TaskModalProps> = ({
-  task, categories, projects, defaultProjectId, defaultStatus, onClose, onSave, onDelete
+  task, categories, projects, defaultProjectId, defaultStatus, onClose, onSave, onDelete, clients = []
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
   const [title, setTitle] = useState(task?.title || '');
@@ -46,6 +48,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [assignedTo, setAssignedTo] = useState<string>(task?.assignedTo || '');
   const [uploadError, setUploadError] = useState('');
   const [driveLinks, setDriveLinks] = useState<DriveLink[]>(task?.driveLinks || []);
+  const [client, setClient] = useState(task?.client || '');
   const [showDrivePicker, setShowDrivePicker] = useState(false);
   const [newChecklistText, setNewChecklistText] = useState('');
   const [workNotes, setWorkNotes] = useState('');
@@ -87,6 +90,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
       checklist: finalChecklist,
       recurrence,
       driveLinks,
+      // sempre presente: apagar o campo precisa limpar o cliente no banco
+      client: client.trim() || undefined,
       ...((task?.assignedTo || '') !== assignedTo ? { assignedTo: assignedTo || null } : {}),
     });
   };
@@ -466,6 +471,22 @@ const TaskModal: React.FC<TaskModalProps> = ({
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Cliente */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Building2 className="w-3 h-3" /> Cliente
+                </label>
+                <input
+                  type="text"
+                  list="clientes-lista"
+                  value={client}
+                  onChange={e => setClient(e.target.value)}
+                  placeholder="Opcional (ex: Empresa X)"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <datalist id="clientes-lista">{clients.map(c => <option key={c} value={c} />)}</datalist>
               </div>
 
               {/* Responsável (equipe) */}

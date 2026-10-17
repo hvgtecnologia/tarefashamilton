@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Calendar, Flag, FolderKanban, Tag, Sparkles, X, AlertCircle, Repeat,
-  CheckSquare, Square, Plus, Paperclip, FileText, Users, HardDrive,
+  CheckSquare, Square, Plus, Paperclip, FileText, Users, HardDrive, Building2,
 } from 'lucide-react';
 import { Task, Urgency, Category, Project, TaskStatus, Recurrence, ChecklistItem, TaskAttachment, DriveLink } from '../types';
 import { URGENCY_CONFIG, RECURRENCE_LABELS, todayISO, loadCustomStatuses, buildAllStatuses } from '../constants';
@@ -16,6 +16,7 @@ interface QuickAddProps {
   defaultProjectId?: string;
   defaultDate?: string;
   defaultAssignedTo?: string;
+  clients?: string[];
   onClose: () => void;
   onSubmit: (data: Partial<Task>) => void;
 }
@@ -26,6 +27,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   defaultProjectId,
   defaultDate,
   defaultAssignedTo,
+  clients = [],
   onClose,
   onSubmit,
 }) => {
@@ -47,6 +49,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploadError, setUploadError] = useState('');
   const [driveLinks, setDriveLinks] = useState<DriveLink[]>([]);
+  const [client, setClient] = useState('');
   const [showDrivePicker, setShowDrivePicker] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +170,7 @@ const QuickAdd: React.FC<QuickAddProps> = ({
       checklist: finalChecklist,
       recurrence,
       driveLinks,
+      client: client.trim() || undefined,
       assignedTo: assignedTo || undefined,
       isCompleted: false,
       position: 0,
@@ -344,6 +348,21 @@ const QuickAdd: React.FC<QuickAddProps> = ({
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+            </div>
+            {/* Cliente */}
+            <div className="col-span-2">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
+                <Building2 className="w-3 h-3" /> Cliente
+              </label>
+              <input
+                type="text"
+                list="clientes-lista-rapido"
+                value={client}
+                onChange={e => setClient(e.target.value)}
+                placeholder="Opcional"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              <datalist id="clientes-lista-rapido">{clients.map(c => <option key={c} value={c} />)}</datalist>
             </div>
             {/* Responsável (equipe) */}
             {members.length > 0 && (

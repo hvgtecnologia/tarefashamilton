@@ -165,6 +165,22 @@ export function newTaskMessage(member: TeamMember, task: { title: string; schedu
   ].filter(Boolean).join('\n');
 }
 
+// Aviso de que a etapa anterior foi concluída e agora é a vez da pessoa.
+export function releasedMessage(member: TeamMember, task: { title: string; scheduledDate?: string; scheduledTime?: string }, previousTitle?: string): string {
+  const when = task.scheduledDate
+    ? `Para: ${formatPrettyDate(task.scheduledDate)}${task.scheduledTime ? ` às ${task.scheduledTime}` : ''}`
+    : '';
+  return [
+    `Oi ${firstName(member.name)}, chegou a sua vez!`,
+    previousTitle ? `A etapa "${previousTitle}" foi concluída.` : 'A etapa anterior foi concluída.',
+    '',
+    task.title,
+    when,
+    '',
+    `Detalhes e conclusão em: ${appUrl()}`,
+  ].filter(Boolean).join('\n');
+}
+
 export function reminderMessage(member: TeamMember, tasks: Task[]): string {
   const lines = tasks.slice(0, 10).map(t => {
     const due = t.scheduledDate || t.dueDate;
