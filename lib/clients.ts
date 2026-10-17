@@ -41,7 +41,9 @@ export function summarizeClients(tasks: Task[], today: string, projects: { id: s
       if (day && day < today) c.overdue++;
     }
   }
-  return [...map.values()].sort((a, b) => b.overdue - a.overdue || b.open - a.open || a.name.localeCompare(b.name));
+  // Ordem alfabética, sem ligar para acento nem maiúscula ("Áurea" fica no A). Antes era por
+  // quantidade de atrasadas, e a lista pulava de lugar toda vez que uma tarefa era concluída.
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 }
 
 // Nomes já usados, para sugerir ao digitar (evita "Empresa X" e "Empresa  X" virarem dois).

@@ -24,12 +24,14 @@ interface ProjectBoardProps {
   canManage?: boolean;
   peopleCount?: number;
   onOpenPeople?: () => void;
+  // Abre a janela de automações já apontando para este projeto
+  onApplyAutomation?: () => void;
 }
 
 const ProjectBoard: React.FC<ProjectBoardProps> = ({
   project, tasks, categories, projects,
   onBack, onAddTask, onUpdateTask, onCompleteTask, onTaskClick,
-  onDeleteProject, onEditProject, canManage = true, peopleCount = 0, onOpenPeople,
+  onDeleteProject, onEditProject, canManage = true, peopleCount = 0, onOpenPeople, onApplyAutomation,
 }) => {
   // Quadro por status, ou cronograma de etapas com data/horário/responsável
   const [viewMode, setViewMode] = useState<'board' | 'steps'>('board');
@@ -227,6 +229,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
             onUpdateTask={onUpdateTask}
             onCompleteTask={onCompleteTask}
             onTaskClick={onTaskClick}
+            onApplyAutomation={onApplyAutomation}
           />
         </div>
       )}

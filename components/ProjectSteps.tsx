@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Plus, Clock, Calendar, Users, ChevronsRight, AlertCircle, Lock, MessageCircle, LayoutTemplate } from 'lucide-react';
+import { Check, Plus, Clock, Calendar, Users, ChevronsRight, AlertCircle, Lock, MessageCircle, LayoutTemplate, Zap } from 'lucide-react';
 import { Project, Task, Urgency } from '../types';
 import { todayISO, isOverdue, formatPrettyDate } from '../constants';
 import { sortSteps, shiftFollowing, waitingFor } from '../lib/steps';
@@ -14,13 +14,15 @@ interface ProjectStepsProps {
   onUpdateTask: (id: string, updates: Partial<Task>) => void;
   onCompleteTask: (id: string) => void;
   onTaskClick: (task: Task) => void;
+  // Ativar uma automação pronta neste projeto/cliente (só o dono; os modelos são dele)
+  onApplyAutomation?: () => void;
 }
 
 // Cronograma do projeto: cada etapa tem o que fazer, data, horário e (se quiser) um responsável da
 // equipe. Cada etapa é uma tarefa do projeto, então já cai na semana, no calendário e na agenda do
 // responsável automaticamente.
 const ProjectSteps: React.FC<ProjectStepsProps> = ({
-  project, tasks, onAddTask, onUpdateTask, onCompleteTask, onTaskClick,
+  project, tasks, onAddTask, onUpdateTask, onCompleteTask, onTaskClick, onApplyAutomation,
 }) => {
   const { members, findMember, role } = useTeam();
   const steps = useMemo(() => sortSteps(tasks), [tasks]);
@@ -77,11 +79,11 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
 
   const saveAsTemplate = async () => {
     if (steps.length === 0) return;
-    const name = prompt('Nome do modelo:', project.name);
+    const name = prompt('Nome da automação:', project.name);
     if (!name || !name.trim()) return;
     try {
       await createTemplate({ name: name.trim(), description: project.description, color: project.color, steps: buildTemplateSteps(steps) });
-      setNotice(`Modelo "${name.trim()}" salvo. Use "Projeto a partir de modelo" no menu lateral.`);
+      setNotice(`Automação "${name.trim()}" salva. Para usar em outro cliente, clique em "Ativar automação" ou use "Automações" no menu lateral.`);
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -105,14 +107,27 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
             {steps.length === 0 ? 'nenhuma ainda' : `${done} de ${steps.length} concluída${done === 1 ? '' : 's'}`}
           </span>
         </h2>
-        {steps.length > 0 && role === 'master' && (
-          <button
-            onClick={saveAsTemplate}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600"
-            title="Guarda estas etapas, com as datas relativas, para criar o próximo projeto parecido"
-          >
-            <LayoutTemplate className="w-3.5 h-3.5" /> Salvar como modelo
-          </button>
+        {role === 'master' && (
+          <div className="flex items-center gap-4">
+            {onApplyAutomation && (
+              <button
+                onClick={onApplyAutomation}
+                className="flex items-center gap-1.5 text-xs font-bold text-amber-600 hover:text-amber-700"
+                title="Cria as etapas de uma automação pronta (D+0, D+1, D+2…) a partir de uma data de início"
+              >
+                <Zap className="w-3.5 h-3.5" /> Ativar automação
+              </button>
+            )}
+            {steps.length > 0 && (
+              <button
+                onClick={saveAsTemplate}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600"
+                title="Guarda estas etapas, com as datas relativas, como uma automação para usar em outro cliente"
+              >
+                <LayoutTemplate className="w-3.5 h-3.5" /> Salvar como automação
+              </button>
+            )}
+          </div>
         )}
       </div>
       {notice && <div className="mb-3 px-3 py-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">{notice}</div>}
@@ -210,7 +225,7 @@ const ProjectSteps: React.FC<ProjectStepsProps> = ({
       {/* Linha do tempo */}
       {steps.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-10">
-          Adicione a primeira etapa acima. Cada uma entra sozinha na sua semana e na agenda de quem for responsável.
+          Adicione a primeira etapa acima. Cada uma entra sozinha na sua semana e na agenda de quem for responsável.{role === 'master' && onApplyAutomation ? ' Ou use "Ativar automação" para criar várias de uma vez.' : ''}
         </p>
       ) : (
         <ol className="relative">

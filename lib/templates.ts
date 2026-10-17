@@ -154,6 +154,74 @@ export async function createTemplate(input: { name: string; description: string;
   return mapTemplate(data);
 }
 
+export async function updateTemplate(id: string, input: { name: string; description: string; color: string; steps: TemplateStep[] }): Promise<ProjectTemplate> {
+  const { data, error } = await supabase
+    .from('project_templates')
+    .update({ name: input.name, description: input.description, color: input.color, steps: input.steps })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return mapTemplate(data);
+}
+
+// ---------- Editor: linhas da tela <-> etapas do modelo ----------
+// Uma linha do editor. "key" identifica a etapa mesmo quando a ordem muda, para a dependência não
+// apontar para a etapa errada depois de subir/descer ou apagar.
+export interface EditorRow {
+  key: string;
+  title: string;
+  description: string;
+  offset: string; // texto do campo "D+"; vazio = sem data
+  time: string;
+  assignedTo: string;
+  dependsOnKey: string;
+}
+
+let keySeq = 0;
+export const newRowKey = () => `r${Date.now().toString(36)}${(keySeq++).toString(36)}`;
+export const blankRow = (): EditorRow => ({ key: newRowKey(), title: '', description: '', offset: '0', time: '', assignedTo: '', dependsOnKey: '' });
+
+export function stepsToRows(steps: TemplateStep[]): EditorRow[] {
+  const rows: EditorRow[] = steps.map(s => ({
+    key: newRowKey(), title: s.title, description: s.description || '',
+    offset: s.offsetDays === undefined ? '' : String(s.offsetDays),
+    time: s.time || '', assignedTo: s.assignedTo || '', dependsOnKey: '',
+  }));
+  steps.forEach((s, i) => { if (s.dependsOn !== undefined && rows[s.dependsOn]) rows[i].dependsOnKey = rows[s.dependsOn].key; });
+  return rows;
+}
+
+// Valida e converte. Linha sem título é ignorada (a pessoa só clicou em "adicionar etapa" a mais).
+// Dependência só vale para etapa que vem ANTES, o que impede ciclo; se a anterior foi apagada ou
+// passou para depois, a dependência cai em vez de apontar para a etapa errada.
+export function rowsToSteps(rows: EditorRow[]): { steps: TemplateStep[]; error?: undefined } | { steps?: undefined; error: string } {
+  const filled = rows.filter(r => r.title.trim());
+  if (filled.length === 0) return { error: 'Adicione pelo menos uma etapa com título.' };
+
+  for (const r of filled) {
+    const off = r.offset.trim();
+    if (off !== '' && !/^\d{1,3}$/.test(off)) {
+      return { error: `"${r.title.trim()}": os dias depois do início precisam ser um número (0, 1, 2…).` };
+    }
+  }
+
+  const indexByKey = new Map<string, number>(filled.map((r, i) => [r.key, i] as [string, number]));
+  const steps = filled.map((r, i): TemplateStep => {
+    const step: TemplateStep = { title: r.title.trim(), description: r.description.trim() };
+    if (r.offset.trim() !== '') step.offsetDays = parseInt(r.offset.trim(), 10);
+    if (r.time) step.time = r.time;
+    if (r.assignedTo) step.assignedTo = r.assignedTo;
+    const dep = r.dependsOnKey ? indexByKey.get(r.dependsOnKey) : undefined;
+    if (dep !== undefined && dep < i) step.dependsOn = dep;
+    return step;
+  });
+  return { steps };
+}
+
+// "D+0", "D+2": como a automação é escrita e lida
+export const offsetLabel = (days?: number) => (days === undefined ? 'sem data' : `D+${days}`);
+
 export async function deleteTemplate(id: string): Promise<void> {
   const { error } = await supabase.from('project_templates').delete().eq('id', id);
   if (error) throw new Error(error.message);

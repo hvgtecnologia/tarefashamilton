@@ -16,7 +16,7 @@ import { CalendarSyncModal } from './components/CalendarSyncModal';
 import TeamView from './components/TeamView';
 import DriveView from './components/DriveView';
 import ClientsView from './components/ClientsView';
-import TemplatesModal from './components/TemplatesModal';
+import TemplatesModal, { ActivateOptions } from './components/TemplatesModal';
 import ProjectPeopleModal from './components/ProjectPeopleModal';
 import MemberTaskModal from './components/MemberTaskModal';
 import TeamMemberModal, { TeamMemberModalMode } from './components/TeamMemberModal';
@@ -51,7 +51,8 @@ const App: React.FC = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isCalendarSyncOpen, setIsCalendarSyncOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+  // Janela de automações: aberta pelo menu (sem alvo) ou pela aba Etapas de um projeto (com alvo)
+  const [templatesTarget, setTemplatesTarget] = useState<{ projectId?: string } | null>(null);
   const [quickAddDefaults, setQuickAddDefaults] = useState<{ projectId?: string; date?: string; assignedTo?: string }>({});
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskModalDefaults, setTaskModalDefaults] = useState<{ projectId?: string; status?: TaskStatus }>({});
@@ -568,12 +569,15 @@ const App: React.FC = () => {
 
   // Cria o projeto e todas as etapas do modelo, com as datas calculadas a partir do início.
   // As etapas são criadas em ordem de dependência: cada uma precisa do id da anterior.
-  const createProjectFromTemplate = async (
-    template: ProjectTemplate,
-    options: { name: string; startDate: string; client: string },
-  ) => {
-    const project = await addProjectToStorage({ name: options.name, description: template.description, color: template.color });
-    setProjects(prev => [...prev, project].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+  const activateTemplate = async (template: ProjectTemplate, options: ActivateOptions) => {
+    // Cliente que já existe: as etapas entram nele. Senão cria o projeto antes.
+    let project = options.projectId ? projects.find(p => p.id === options.projectId) : undefined;
+    if (options.projectId && !project) throw new Error('Projeto não encontrado.');
+    if (!project) {
+      project = await addProjectToStorage({ name: options.name, description: template.description, color: template.color });
+      const created = project;
+      setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })));
+    }
 
     const planned = planFromTemplate(template.steps, options.startDate);
     const { order, dependsOn } = creationOrder(template.steps);
@@ -757,7 +761,7 @@ const App: React.FC = () => {
           addProject={addProject}
           deleteProject={deleteProject}
           onOpenProject={(id) => setOpenProjectId(id)}
-          onOpenTemplates={() => setIsTemplatesOpen(true)}
+          onOpenTemplates={() => setTemplatesTarget({})}
           onOpenHistory={() => setIsHistoryOpen(true)}
           onOpenCalendarSync={() => setIsCalendarSyncOpen(true)}
           onClose={() => setIsSidebarOpen(false)}
@@ -887,6 +891,7 @@ const App: React.FC = () => {
                 canManage={teamRole !== 'manager' || adminProjectIds.includes(openedProject.id)}
                 peopleCount={projectMembers.filter(m => m.projectId === openedProject.id).length}
                 onOpenPeople={() => setPeopleProjectId(openedProject.id)}
+                onApplyAutomation={() => setTemplatesTarget({ projectId: openedProject.id })}
               />
             </div>
           ) : view === 'team' ? (
@@ -1042,11 +1047,13 @@ const App: React.FC = () => {
         />
       )}
 
-      {isTemplatesOpen && (
+      {templatesTarget && (
         <TemplatesModal
-          onClose={() => setIsTemplatesOpen(false)}
-          onCreate={createProjectFromTemplate}
+          projects={projects}
           clients={clientList}
+          initialProjectId={templatesTarget.projectId}
+          onActivate={activateTemplate}
+          onClose={() => setTemplatesTarget(null)}
         />
       )}
 

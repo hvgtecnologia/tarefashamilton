@@ -202,7 +202,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 className="flex items-center gap-2 w-full px-3 py-1.5 mb-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg"
               >
                 <LayoutTemplate className="w-3.5 h-3.5" />
-                Criar projeto de um modelo
+                Automações de projeto
               </button>
             )}
             <div className="space-y-0.5">
