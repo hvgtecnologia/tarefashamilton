@@ -28,7 +28,8 @@ const TodayView: React.FC<TodayViewProps> = ({
   const today = todayISO();
 
   const groups = useMemo(() => {
-    const pending = tasks.filter(t => !t.isCompleted);
+    // Backlog é informação do projeto, não cobrança: fica fora de Hoje, de atrasadas e das listas de atenção
+    const pending = tasks.filter(t => !t.isCompleted && t.status !== 'backlog');
 
     const overdueList = pending.filter(t => {
       const due = t.dueDate || t.scheduledDate;
@@ -61,7 +62,7 @@ const TodayView: React.FC<TodayViewProps> = ({
         if (item.kind === 'project') return t.projectId === item.id;
         return t.category === item.id && !t.projectId;
       });
-      const pending = taskList.filter(t => !t.isCompleted);
+      const pending = taskList.filter(t => !t.isCompleted && t.status !== 'backlog');
       const overdue = pending.filter(t => isOverdue(t.dueDate || t.scheduledDate));
       const done = taskList.filter(t => t.isCompleted);
       const total = pending.length + done.length;

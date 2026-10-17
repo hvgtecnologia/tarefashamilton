@@ -51,8 +51,8 @@ const TeamView: React.FC<TeamViewProps> = ({
     return members.map(member => {
       const open = tasks.filter(t => t.assignedTo === member.userId && !t.isCompleted);
       // Atrasadas primeiro (mais antigas no topo), depois por dia e horário
-      const overdue = open.filter(t => isOverdue(taskDay(t))).sort((a, b) => (taskDay(a) || '').localeCompare(taskDay(b) || ''));
-      const rest = open.filter(t => !isOverdue(taskDay(t)));
+      const overdue = open.filter(t => t.status !== 'backlog' && isOverdue(taskDay(t))).sort((a, b) => (taskDay(a) || '').localeCompare(taskDay(b) || ''));
+      const rest = open.filter(t => t.status === 'backlog' || !isOverdue(taskDay(t)));
       const dated = rest.filter(t => taskDay(t)).sort((a, b) =>
         (taskDay(a) || '').localeCompare(taskDay(b) || '') || compareByTime(a, b));
       const undated = sortTasksByTime(rest.filter(t => !taskDay(t)));
@@ -299,7 +299,7 @@ const TeamView: React.FC<TeamViewProps> = ({
                     ) : (
                       visible.map(task => {
                         const day = taskDay(task);
-                        const late = isOverdue(day);
+                        const late = task.status !== 'backlog' && isOverdue(day);
                         return (
                           <button
                             key={task.id}
@@ -341,7 +341,7 @@ const TeamView: React.FC<TeamViewProps> = ({
                   {hasWhatsapp(member) ? (
                     overdueCount > 0 && (
                       <a
-                        href={whatsappLink(member.phone, reminderMessage(member, open.filter(t => isOverdue(taskDay(t)))))}
+                        href={whatsappLink(member.phone, reminderMessage(member, open.filter(t => t.status !== 'backlog' && isOverdue(taskDay(t)))))}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full flex items-center justify-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold py-2 rounded-lg text-sm"

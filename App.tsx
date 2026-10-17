@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Menu, Sparkles } from 'lucide-react';
 import { Task, Category, Urgency, DayOfWeek, Project, TaskStatus, View, TeamMember, ProjectMember, ProjectRole } from './types';
-import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, sortTasksByTime, getInboxTasks } from './constants';
+import { DEFAULT_CATEGORIES, getStartOfWeek, getWeekDates, formatDate, todayISO, isOverdue, isTaskOverdue, isBacklog, sortTasksByTime, getInboxTasks } from './constants';
 import KanbanBoard from './components/KanbanBoard';
 import Sidebar from './components/Sidebar';
 import TaskModal from './components/TaskModal';
@@ -663,7 +663,7 @@ const App: React.FC = () => {
   const overdueByProject = useMemo(() => {
     const map: Record<string, number> = {};
     tasks.forEach(t => {
-      if (t.projectId && !t.isCompleted && isOverdue(t.dueDate || t.scheduledDate)) {
+      if (t.projectId && isTaskOverdue(t)) {
         map[t.projectId] = (map[t.projectId] || 0) + 1;
       }
     });
@@ -671,8 +671,8 @@ const App: React.FC = () => {
   }, [tasks]);
 
   const today = todayISO();
-  const todayCount = useMemo(() => tasks.filter(t => !t.isCompleted && (t.dueDate || t.scheduledDate) === today).length, [tasks, today]);
-  const overdueCount = useMemo(() => tasks.filter(t => !t.isCompleted && isOverdue(t.dueDate || t.scheduledDate)).length, [tasks]);
+  const todayCount = useMemo(() => tasks.filter(t => !t.isCompleted && !isBacklog(t) && (t.dueDate || t.scheduledDate) === today).length, [tasks, today]);
+  const overdueCount = useMemo(() => tasks.filter(isTaskOverdue).length, [tasks]);
 
   const handleDayClick = (date: Date) => {
     setCurrentWeekStart(getStartOfWeek(date));

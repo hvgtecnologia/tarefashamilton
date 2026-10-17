@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Plus, ArrowLeft, Settings, Trash2, AlertCircle, X, HelpCircle, Layers, Users } from 'lucide-react';
 import { Project, Task, Category, TaskStatus, Urgency } from '../types';
-import { STATUS_CONFIG, NATIVE_STATUS_ORDER, isOverdue, CustomStatus, loadCustomStatuses, saveCustomStatuses, buildAllStatuses } from '../constants';
+import { STATUS_CONFIG, NATIVE_STATUS_ORDER, isOverdue, isTaskOverdue, CustomStatus, loadCustomStatuses, saveCustomStatuses, buildAllStatuses } from '../constants';
 import TaskCard from './TaskCard';
 import Tooltip from './Tooltip';
 import StatusManager from './StatusManager';
@@ -76,7 +76,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({
   const totalTasks = projectTasks.length;
   const doneCount = tasksByStatus.done?.length || 0;
   const progress = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
-  const overdueCount = projectTasks.filter(t => !t.isCompleted && isOverdue(t.dueDate || t.scheduledDate)).length;
+  const overdueCount = projectTasks.filter(isTaskOverdue).length;
 
   const handleDragEnd = (result: DropResult) => {
     const { source, destination, draggableId } = result;

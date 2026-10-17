@@ -220,6 +220,14 @@ export const isOverdue = (dateStr?: string): boolean => {
   return dateStr < todayISO();
 };
 
+// Backlog = informação pontual do projeto (ideia, referência, "um dia"). Nunca é cobrança: não entra
+// na caixa de entrada, não conta como atrasada e não aparece nas listas de atenção.
+export const isBacklog = (t: { status?: string }): boolean => t.status === 'backlog';
+
+// Atrasada de verdade: aberta, com data vencida e que NÃO é backlog.
+export const isTaskOverdue = (t: { isCompleted?: boolean; status?: string; dueDate?: string; scheduledDate?: string }): boolean =>
+  !t.isCompleted && !isBacklog(t) && isOverdue(t.dueDate || t.scheduledDate);
+
 export const isToday = (dateStr?: string): boolean => {
   if (!dateStr) return false;
   return dateStr === todayISO();
@@ -252,10 +260,12 @@ export const sortTasksByTime = <T extends { scheduledTime?: string; position: nu
 //
 // Usada tanto para desenhar a coluna quanto para calcular a posição no arrastar, para as duas
 // nunca mais discordarem sobre o que está ali dentro.
-export const getInboxTasks = <T extends { scheduledDate?: string; position: number }>(
+export const getInboxTasks = <T extends { scheduledDate?: string; position: number; status?: string }>(
   list: T[],
   today: string,
 ): T[] => {
+  // Backlog nunca vem para a caixa de entrada (nem sem data, nem vencido): fica só no projeto.
+  list = list.filter(t => !isBacklog(t));
   const noDate = list
     .filter(t => !t.scheduledDate)
     .sort((a, b) => a.position - b.position);

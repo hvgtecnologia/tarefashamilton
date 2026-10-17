@@ -1,7 +1,7 @@
 import React from 'react';
 import { Circle, FileText, Image as ImageIcon, Calendar, CheckSquare, AlertCircle, Repeat, HardDrive } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
-import { URGENCY_CONFIG, getStatusConfig, isOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus, RECURRENCE_SHORT_LABELS } from '../constants';
+import { URGENCY_CONFIG, getStatusConfig, isOverdue, isTaskOverdue, formatPrettyDate, isToday, loadCustomStatuses, isNativeStatus, RECURRENCE_SHORT_LABELS } from '../constants';
 import { useTeam, firstName } from './TeamContext';
 
 interface TaskCardProps {
@@ -21,7 +21,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, category, project, onClick, o
   const statusStyle = getStatusConfig(task.status, loadCustomStatuses());
   const statusIsCustom = task.status && !isNativeStatus(task.status);
   const dueDate = task.dueDate || task.scheduledDate;
-  const overdue = !task.isCompleted && isOverdue(dueDate);
+  const overdue = isTaskOverdue(task);
   const dueToday = !task.isCompleted && isToday(dueDate);
 
   const checklist = task.checklist || [];

@@ -37,8 +37,9 @@ export function summarizeClients(tasks: Task[], today: string, projects: { id: s
     if (t.isCompleted) c.done++;
     else {
       c.open++;
+      // backlog conta como aberto (é informação do cliente), mas nunca como atrasado
       const day = dayOf(t);
-      if (day && day < today) c.overdue++;
+      if (day && day < today && t.status !== 'backlog') c.overdue++;
     }
   }
   // Ordem alfabética, sem ligar para acento nem maiúscula ("Áurea" fica no A). Antes era por

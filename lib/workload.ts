@@ -22,7 +22,8 @@ export function computeWorkload(
   ownerLabel = 'Você',
 ): WorkloadRow[] {
   const limit = shiftDate(today, 7);
-  const open = tasks.filter(t => !t.isCompleted && !t.deletedAt);
+  // backlog não é trabalho a fazer: fora da carga
+  const open = tasks.filter(t => !t.isCompleted && !t.deletedAt && t.status !== 'backlog');
 
   const rowFor = (key: string, name: string, isMe: boolean, list: Task[]): WorkloadRow => {
     const row: WorkloadRow = { key, name, isMe, open: list.length, overdue: 0, today: 0, next7: 0, undated: 0 };

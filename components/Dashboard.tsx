@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { TrendingUp, AlertTriangle, CheckCircle2, BarChart3, Calendar, FolderKanban, Activity, ArrowUpRight, Users } from 'lucide-react';
 import { Task, Category, Project, TaskStatus } from '../types';
 import { useTeam } from './TeamContext';
-import { URGENCY_CONFIG, todayISO, isOverdue, formatPrettyDate, parseLocalDate, formatDate } from '../constants';
+import { URGENCY_CONFIG, todayISO, isOverdue, isTaskOverdue, formatPrettyDate, parseLocalDate, formatDate } from '../constants';
 import TaskListModal from './TaskListModal';
 
 type KpiFilter = 'pending' | 'overdue' | 'doing' | 'completed';
@@ -26,7 +26,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
     const pending = tasks.filter(t => !t.isCompleted);
     const completed = tasks.filter(t => t.isCompleted);
 
-    const overdue = pending.filter(t => isOverdue(t.dueDate || t.scheduledDate));
+    const overdue = pending.filter(isTaskOverdue);
 
     // Próximos 7 dias
     const next7Days: { date: string, label: string, count: number }[] = [];
@@ -92,7 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
       const pTasks = tasks.filter(t => t.projectId === p.id);
       const pPending = pTasks.filter(t => !t.isCompleted);
       const pCompleted = pTasks.filter(t => t.isCompleted);
-      const pOverdue = pPending.filter(t => isOverdue(t.dueDate || t.scheduledDate));
+      const pOverdue = pPending.filter(isTaskOverdue);
       const total = pPending.length + pCompleted.length;
       const progress = total > 0 ? Math.round((pCompleted.length / total) * 100) : 0;
       return { ...p, pending: pPending.length, completed: pCompleted.length, overdue: pOverdue.length, progress, total };
@@ -109,14 +109,14 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
         id: m.userId,
         name: m.name,
         open: open.length,
-        overdue: open.filter(t => isOverdue(t.dueDate || t.scheduledDate)).length,
+        overdue: open.filter(isTaskOverdue).length,
         doneWeek: tasks.filter(t => t.isCompleted && t.completedBy === m.userId && t.completedAt && new Date(t.completedAt).getTime() >= weekAgo).length,
       };
     }).sort((a, b) => b.open - a.open);
     return {
       rows,
       mine: mine.length,
-      mineOverdue: mine.filter(t => isOverdue(t.dueDate || t.scheduledDate)).length,
+      mineOverdue: mine.filter(isTaskOverdue).length,
       delegated: tasks.filter(t => !t.isCompleted && t.assignedTo).length,
     };
   }, [tasks, members]);
@@ -410,7 +410,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, categories, projects, onOp
             title: 'Tarefas Atrasadas',
             subtitle: `${stats.overdue} precisam de ação imediata`,
             color: '#f43f5e',
-            tasks: tasks.filter(t => !t.isCompleted && isOverdue(t.dueDate || t.scheduledDate))
+            tasks: tasks.filter(isTaskOverdue)
               .sort((a, b) => (a.dueDate || a.scheduledDate || '').localeCompare(b.dueDate || b.scheduledDate || '')),
           },
           doing: {
